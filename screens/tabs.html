@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>Stitch Design</title>
+  <link href="data:image/x-icon;base64," rel="icon" type="image/x-icon" />
+  <link href="https://fonts.googleapis.com" rel="preconnect" />
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&amp;display=swap"
+    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              DEFAULT: "#0b378e",
+              gradient: "bg-gradient-to-br from-[#0b378e] to-[#051c4a]",
+            },
+            accent: "#ff0000",
+            "background-light": "#f6f6f8",
+            "background-dark": "#101622",
+          },
+          fontFamily: {
+            display: ["Space Grotesk"],
+          },
+          borderRadius: {
+            DEFAULT: "0.25rem",
+            lg: "0.5rem",
+            xl: "0.75rem",
+            full: "9999px",
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    body {
+      min-height: max(884px, 100dvh);
+      background-color: #101622;
+    }
+
+    .tab-item:hover .tab-close-btn {
+      opacity: 1;
+    }
+  </style>
+  <style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+
+<body class="bg-background-dark font-display text-gray-200">
+  <div class="flex flex-col h-screen">
+    <main class="flex-grow relative bg-background-dark overflow-hidden">
+      <div class="absolute inset-0 bg-cover bg-center"
+        style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDyy8RLPQiKD_nvPhzHmQuJE7MmH6fry7MHRu9M2UOCZZS9h-qF01UC_9J03JK9YACqmKZjGfY8BLslE7fBv91tZXIX_0zmTuWcy98ei3GcXlUpBv3CMBItvppLgy1GY69CwSa8bTzGJOTlyEvU5hz2R_h_rUqYf6cUFUtRkG_ZXALOmT9kYSnekALJq___EAcU-2Ia14v4gqQyZJk03fUYGKSuy5uEZ1_5nVVzde98FfeyG8mggsom5TSFm7_WZs1nI3XkA9jr8XQ');">
+      </div>
+    </main>
+    <footer class="bg-gradient-to-t from-black/80 to-transparent backdrop-blur-sm border-t border-white/10 z-20">
+      <div class="flex items-center justify-start p-2">
+        <button class="p-2 rounded-full hover:bg-white/10 text-white">
+          <span class="material-symbols-outlined">home</span>
+        </button>
+        <div class="flex items-center gap-2 overflow-x-auto px-2">
+          <div class="tab-item relative w-10 h-10 flex-shrink-0">
+            <img alt="Active tab preview" class="w-full h-full rounded-full border-2 border-accent object-cover"
+              src="https://lh3.googleusercontent.com/aida-public/AB6AXuA2Hpq5boEistngXVRNGFAhVNwGkUSzAHCRXnkwB43Gz2FHmCIr1FCA3Z4Shul0Q-65lf-JJ1EZr8fEQi1695DfQuDqUQevzC3XPLpJefvYWDOnhV0nYFh-6j_eqdWxnc8nEmfdbD0EZfI8X60hb28j58yaSbllJSd4gbS5tlvRMCRMZdUuUSnW23gMQ8524OkhnJ8SU2_qntWJye0lFugaE199A63z056V7oQB5nceiaDeDmnUCPn-JmCowXBP8VusyF2ursHJGr0" />
+            <button
+              class="tab-close-btn absolute -top-1 -right-1 bg-accent text-white rounded-full w-5 h-5 flex items-center justify-center opacity-100">
+              <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+          </div>
+          <div class="tab-item relative w-10 h-10 flex-shrink-0">
+            <img alt="Inactive tab preview"
+              class="w-full h-full rounded-full border-2 border-transparent hover:border-white/50 object-cover"
+              src="https://lh3.googleusercontent.com/aida-public/AB6AXuDP0eyT-Ell86Q8cRtFw4nExuEt1GxyT1ekTzqbXYY4oA8EUo2AoCcx6tghR1yAusF1Kw4C8u7q1V9s8Zi_5kV4WrFLT3DBvrCdU3VmLif1YOcLinDn5Sxnk_Y8kS5aT7DzFl6OCtF9jyrh9_xpweduRYeDqZzco3qnJsO36gSM4YtTkU1swsj4yD1oMQGYztJBzaZ7kMEAkMkOB4FiSQaVzJhMBkGTktkvMrjV4mKSn_XPFG4xQQmF-zuG5oXNcDk4cra-hDwOQxo" />
+          </div>
+          <div class="tab-item relative w-10 h-10 flex-shrink-0">
+            <img alt="Inactive tab preview"
+              class="w-full h-full rounded-full border-2 border-transparent hover:border-white/50 object-cover"
+              src="https://lh3.googleusercontent.com/aida-public/AB6AXuArcgc4AyoX733-kiIXox62yE1IuIdIiJ4CeQIDl2jKbg6iqI3Cr-vIlr-r9pEMqRNTBgAQec5IvHfSf6v49JZaJAQB6L10Gbl8VbulSJbygY1sRnbhqE_fx1-oNcd9SJfbN3-459MPImVMEbWtbMvAKwRsUd73e03YkGd-96K9vjVor5TZavFGQF7NRxgseO7Q8u13sfnu3VXBs5wmz3fNf0QjgOzjQSEkXoUjgzr-I_Uh95wOBkzW6Q74Oa2nrStcnVha9lRauyg" />
+          </div>
+          <div class="tab-item relative w-10 h-10 flex-shrink-0">
+            <img alt="Inactive tab preview"
+              class="w-full h-full rounded-full border-2 border-transparent hover:border-white/50 object-cover"
+              src="https://lh3.googleusercontent.com/aida-public/AB6AXuCJnDRU09QPVqOuNkM3RGknZCZJbtsaUU03Lf3ZTdCGyqp1lr2gDKoAlOHpsqNa50eLDf-UVEqldUd8Z443ByiPgCVQAYOuRIHdclgDjXf3I4_vs2MquziqQ_ti-rjbhy3fgX22Utj56p3NA9eDGWPZLSrhfE_bwPgEKVt7atAP8mh3BhFmAkGPMnMvyaE6Bd38b-AS5nCC3mg8hchEv1-NJLjTgfhnKeM0bAvtyLeJbH-6lofNZcu0ilRvh5MOGRDeNNkdS7eWe-M" />
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+</body>
+
+</html>

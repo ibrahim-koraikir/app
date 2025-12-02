@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Required permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    
+    <!-- Storage permissions for downloads (API level dependent)
+         - WRITE_EXTERNAL_STORAGE: Required for Android 6-9 (API 23-28) to write to Downloads
+         - READ_EXTERNAL_STORAGE: Required for Android 9 and below (maxSdkVersion="32")
+         - READ_MEDIA_VIDEO: Required for Android 13+ to access video files (minSdkVersion="33")
+         - Android 10+ uses scoped storage and doesn't need WRITE_EXTERNAL_STORAGE -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"
+        android:minSdkVersion="33" />
+    
+    <!-- Notification permission for download notifications (API 33+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:name=".EntertainmentBrowserApp"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Bro"
+        android:networkSecurityConfig="@xml/network_security_config">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Bro">
+            <!-- Main launcher intent -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            
+            <!-- Deep link for opening websites in WebView (custom scheme) -->
+            <!-- Note: autoVerify removed as custom schemes don't support App Links verification -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                
+                <data
+                    android:scheme="entertainmentbrowser"
+                    android:host="open"
+                    android:pathPrefix="/webview" />
+            </intent-filter>
+            
+            <!-- HTTP/HTTPS deep links removed - configure only if you have a verified domain -->
+            <!-- To enable App Links, you need:
+                 1. A verified domain (e.g., entertainmentbrowser.app)
+                 2. assetlinks.json file hosted at https://yourdomain.com/.well-known/assetlinks.json
+                 3. Replace the intent-filter below with your actual domain
+            -->
+            <!--
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                
+                <data
+                    android:scheme="https"
+                    android:host="entertainmentbrowser.app"
+                    android:pathPrefix="/open" />
+            </intent-filter>
+            -->
+        </activity>
+    </application>
+
+</manifest>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Network Security Configuration
+    
+    SECURITY POLICY:
+    - Default: ALL cleartext (HTTP) traffic is BLOCKED for security
+    - Exception: ONLY monetization ad network domains are whitelisted
+    - Regular user browsing remains HTTPS-only
+    
+    IMPORTANT: Do NOT expand this whitelist without security review.
+    Each domain must be justified and documented below.
+-->
+<network-security-config>
+    <!-- Default: Block cleartext (HTTP) for all domains -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    
+    <!-- 
+        MONETIZATION WHITELIST
+        Allow cleartext ONLY for ad network domains used in monetized tabs.
+        These domains are required for revenue generation via the "Sponsored" card.
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- 
+            Adsterra Ad Network (Primary monetization partner)
+            Required: Adsterra smartlink redirects through HTTP tracking URLs
+            Used in: Sponsored card on home screen
+        -->
+        <domain includeSubdomains="true">effectivegatecpm.com</domain>
+        <domain includeSubdomains="true">adsterra.com</domain>
+        <domain includeSubdomains="true">adsterratools.com</domain>
+        
+        <!-- 
+            Ad Redirect Domains (Observed in production)
+            Required: Intermediate redirect URLs in Adsterra tracking chain
+            Note: These may change over time - monitor logs for new domains
+        -->
+        <domain includeSubdomains="true">dzo.chesskings.live</domain>
+        <domain includeSubdomains="true">grandtech.live</domain>
+        
+        <!-- 
+            ADDING NEW DOMAINS:
+            1. Verify domain is required for monetization (not just random ads)
+            2. Add inline comment explaining why it's needed
+            3. Test that monetized tabs work without it first
+            4. Update MONETIZATION_CLEARTEXT_FIX.md with the new domain
+            5. Consider security implications before adding
+        -->
+    </domain-config>
+</network-security-config>

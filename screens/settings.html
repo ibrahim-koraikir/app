@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Stitch Design - Settings</title>
+<link href="data:image/x-icon;base64," rel="icon" type="image/x-icon"/>
+<link crossorigin="" href="https://fonts.gstatic.com/" rel="preconnect"/>
+<link as="style" href="https://fonts.googleapis.com/css2?display=swap&amp;family=Arial:wght@400;700&amp;display=swap" onload="this.rel='stylesheet'" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<style type="text/tailwindcss">
+        @tailwind base;
+        @tailwind components;
+        @tailwind utilities;
+        :root {
+            --primary-gradient-start: #0b378e;
+            --primary-gradient-end: #051c4a;
+            --accent-color: #ff3b30;
+            --background-dark: #101622;
+            --text-light: #ffffff;
+            --text-muted: #94a3b8;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            background-image: linear-gradient(to bottom, var(--primary-gradient-end), var(--background-dark));
+            color: var(--text-light);
+            min-height: 100vh;
+        }
+        .dark-card {
+            background-color: rgba(16, 22, 34, 0.5);}
+        .setting-item {
+            @apply flex items-center justify-between p-4;
+        }
+        .setting-label {
+            @apply text-base font-normal;
+        }
+        .setting-description {
+            @apply text-sm text-slate-400;
+        }
+        .section-title {
+            @apply text-sm font-bold uppercase text-[var(--accent-color)] px-4 mb-2;
+        }
+        .switch-toggle .peer:checked ~ .switch-bg {
+            background-color: var(--accent-color);
+        }
+        .switch-toggle .peer:checked ~ .switch-bg:after {
+            transform: translateX(100%);
+            border-color: white;
+        }
+        .switch-bg {
+            @apply h-6 w-11 rounded-full bg-slate-600 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''];
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-gradient-to-b from-primary-gradient-end to-background-dark text-slate-200">
+<div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden">
+<div class="flex-grow pb-16">
+<header class="flex items-center p-4">
+<button class="text-white">
+<svg fill="currentColor" height="24px" viewBox="0 0 256 256" width="24px" xmlns="http://www.w3.org/2000/svg">
+<path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"></path>
+</svg>
+</button>
+<h1 class="flex-1 text-center text-xl font-bold pr-6 text-white">Settings</h1>
+</header>
+<main class="px-4">
+<section class="mt-4">
+<h2 class="section-title">Download</h2>
+<div class="space-y-px bg-background-dark/30 rounded-xl overflow-hidden">
+<div class="setting-item dark-card">
+<div>
+<p class="setting-label">Download on Wi-Fi only</p>
+</div>
+<label class="relative inline-flex cursor-pointer items-center switch-toggle">
+<input checked="" class="peer sr-only" type="checkbox" value=""/>
+<div class="switch-bg"></div>
+</label>
+</div>
+<div class="w-full h-px bg-white/10"></div>
+<button class="setting-item dark-card w-full text-left">
+<div>
+<p class="setting-label">Download location</p>
+<p class="setting-description">Internal storage</p>
+</div>
+<svg class="text-slate-400" fill="currentColor" height="20px" viewBox="0 0 256 256" width="20px" xmlns="http://www.w3.org/2000/svg">
+<path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"></path>
+</svg>
+</button>
+<div class="w-full h-px bg-white/10"></div>
+<button class="setting-item dark-card w-full text-left">
+<div>
+<p class="setting-label">Maximum concurrent downloads</p>
+<p class="setting-description">3</p>
+</div>
+<svg class="text-slate-400" fill="currentColor" height="20px" viewBox="0 0 256 256" width="20px" xmlns="http://www.w3.org/2000/svg">
+<path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"></path>
+</svg>
+</button>
+</div>
+</section>
+<section class="mt-8">
+<h2 class="section-title">Cache</h2>
+<div class="rounded-xl overflow-hidden">
+<button class="setting-item dark-card w-full text-left">
+<div>
+<p class="font-medium text-accent">Clear Cache</p>
+<p class="setting-description">Clear temporary files</p>
+</div>
+<svg class="text-slate-400" fill="currentColor" height="20px" viewBox="0 0 256 256" width="20px" xmlns="http://www.w3.org/2000/svg">
+<path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"></path>
+</svg>
+</button>
+</div>
+</section>
+<section class="mt-8">
+<h2 class="section-title">About</h2>
+<div class="space-y-px bg-background-dark/30 rounded-xl overflow-hidden">
+<div class="setting-item dark-card">
+<p class="setting-label">App version</p>
+<p class="text-sm text-slate-400">1.2.3</p>
+</div>
+<div class="w-full h-px bg-white/10"></div>
+<a class="setting-item dark-card" href="#">
+<p class="setting-label">Privacy Policy</p>
+<svg class="text-slate-400" fill="currentColor" height="20px" viewBox="0 0 256 256" width="20px" xmlns="http://www.w3.org/2000/svg">
+<path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"></path>
+</svg>
+</a>
+<div class="w-full h-px bg-white/10"></div>
+<a class="setting-item dark-card" href="#">
+<p class="setting-label">Terms of Service</p>
+<svg class="text-slate-400" fill="currentColor" height="20px" viewBox="0 0 256 256" width="20px" xmlns="http://www.w3.org/2000/svg">
+<path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"></path>
+</svg>
+</a>
+</div>
+</section>
+</main>
+</div>
+</div>
+
+</body></html>

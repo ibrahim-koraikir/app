@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.Bro" parent="android:Theme.Material.NoActionBar">
+        <!-- Window background - dark to prevent red flash -->
+        <item name="android:windowBackground">@color/black</item>
+        <item name="android:colorBackground">@color/black</item>
+        <item name="android:statusBarColor">@color/black</item>
+        <item name="android:navigationBarColor">@color/black</item>
+        
+        <!-- Splash Screen API attributes moved to values-v31 for Android 12+ -->
+        <item name="postSplashScreenTheme">@style/Theme.Bro.PostSplash</item>
+    </style>
+    
+    <style name="Theme.Bro.PostSplash" parent="android:Theme.Material.NoActionBar">
+        <!-- Window background - dark to prevent red flash -->
+        <item name="android:windowBackground">@color/black</item>
+        <item name="android:colorBackground">@color/black</item>
+        <item name="android:statusBarColor">@color/black</item>
+        <item name="android:navigationBarColor">@color/black</item>
+    </style>
+</resources>

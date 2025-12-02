@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Entertainment Browser</title>
+<link href="data:image/x-icon;base64," rel="icon" type="image/x-icon"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "background-dark": "#121212",
+              "card-dark": "#1E1E1E",
+              "netflix-red": "#E50914",
+              "disney-blue": "#113CCF",
+              "imdb-yellow": "#F5C518",
+              "goodreads-brown": "#A0522D",
+              accent: "#FF0000",
+            },
+            fontFamily: {
+              sans: ["Roboto", "sans-serif"],
+            },
+            boxShadow: {
+              'deep-dark': '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15)',
+              'card-glow-netflix': '0 0 20px rgba(229, 9, 20, 0.5)',
+              'card-glow-disney': '0 0 20px rgba(17, 60, 207, 0.5)',
+              'card-glow-imdb': '0 0 20px rgba(245, 197, 24, 0.5)',
+              'card-glow-goodreads': '0 0 20px rgba(160, 82, 45, 0.5)',
+            }
+          },
+        },
+      };
+    </script>
+<style>
+      body {
+        font-family: "Roboto", sans-serif;
+      }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-dark text-white">
+<div class="relative min-h-screen w-full">
+<header class="bg-transparent sticky top-0 z-20 flex items-center justify-center px-6 py-4">
+<h1 class="text-xl font-medium tracking-wider">CineBrowse</h1>
+</header>
+<main class="space-y-8 px-6 pb-28">
+<section>
+<div class="flex items-center justify-between mb-4">
+<h2 class="text-2xl font-bold">Movies</h2>
+</div>
+<div class="grid grid-cols-2 gap-6">
+<div class="group relative overflow-hidden rounded-2xl border border-netflix-red/50 shadow-deep-dark hover:shadow-card-glow-netflix transition-all duration-300 ease-in-out transform hover:-translate-y-1">
+<img alt="Netflix background" class="absolute inset-0 h-full w-full object-cover opacity-30 transition-opacity duration-300 group-hover:opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBJ78bf5t-sUE4PgqYahlJFU6nXYiYm_7UBUU1HshB0h8LwvHUPkPNDpk4QAWq-Fo3D55pRpGyt1Z-FNmdtuU7JvzKrSHHJKy5fFwWTfCjILnvpWVS8MZRf3SzgFu90idJKRwRiPzGw7b14EC5ww5-OnoQIvK4fN2XrQp9N2D7fjeISF1sr9pjATocpcnkpzK_BHE_Bw2-aGkihy3fA9-3bmnIQdfjO1EQQaAAnWfKEyYZ6fijj7ifJg3DlQSppBmmOYiPxAEokQOA"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
+<button class="absolute top-2 right-2 text-white/70 hover:text-white transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+<div class="relative flex flex-col justify-end h-56 p-3">
+<div>
+<h3 class="text-base font-bold">Netflix</h3>
+<p class="text-gray-300 text-[11px] mt-1 mb-2 line-clamp-2">Stream popular movies and exclusive originals.</p>
+<button class="border border-netflix-red bg-netflix-red/20 text-white text-[10px] font-semibold px-3 py-1 rounded-full hover:bg-netflix-red/40 transition">Streaming</button>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-2xl border border-imdb-yellow/50 shadow-deep-dark hover:shadow-card-glow-imdb transition-all duration-300 ease-in-out transform hover:-translate-y-1">
+<img alt="IMDb background" class="absolute inset-0 h-full w-full object-cover opacity-30 transition-opacity duration-300 group-hover:opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDU6E-qkiu_-cYBoUdgrgPrwj7pECmm3fkOSyGCY6ycycW-jUv--trjNNqWf-c2BPXztXGNolp3OV6Dl-mG0zpCj3y_Zk_QTCXg1vlqE_zMNpBBjnG7o_B-1EmSyjCsBIgwe4fu1uwzPTtGMpZuCW5XN3ZY09YeA9iZe2sfkKoea9zMc93EZoBKDWe34vJxeEa2IGio5x4IfITaaqr9mcmehhFAfdwgzjN-GCX7pAHmqhy6OjwYpaJ4DkyBiYbyQrOPMwpV9adE2v4"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
+<button class="absolute top-2 right-2 text-white/70 hover:text-white transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+<div class="relative flex flex-col justify-end h-56 p-3">
+<div>
+<h3 class="text-base font-bold">IMDb</h3>
+<p class="text-gray-300 text-[11px] mt-1 mb-2 line-clamp-2">Find ratings and reviews for the newest movies.</p>
+<button class="border border-imdb-yellow bg-imdb-yellow/20 text-white text-[10px] font-semibold px-3 py-1 rounded-full hover:bg-imdb-yellow/40 transition">Database</button>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-2xl border border-disney-blue/50 shadow-deep-dark hover:shadow-card-glow-disney transition-all duration-300 ease-in-out transform hover:-translate-y-1">
+<img alt="Disney+ background" class="absolute inset-0 h-full w-full object-cover opacity-30 transition-opacity duration-300 group-hover:opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCWSGBrHc051HSgB0PesElotx_HH8vG3fqfy4D39-rgY_6xkJC2UkC0iHaI9eFtF6wYC_cM3EeQHSr0xJo2K-pq0kDxuYyMGIwc8JVORVfwhK-E1jM49EUxCnbBUrMaZ8QNOSn9G7W9d2PfYhNqKGJWc4QWB0kHpxVlyB37mUaHD5jTHgTXmT4NKClnbRswd2wVvHQWIIKgZK5gVz0tj4C8IuEacNx7eqYWd08YH3nj-BN0Czd_TTSIJVDZAfAGEeyUXm4PoHZtddU"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
+<button class="absolute top-2 right-2 text-white/70 hover:text-white transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+<div class="relative flex flex-col justify-end h-56 p-3">
+<div>
+<h3 class="text-base font-bold">Disney+</h3>
+<p class="text-gray-300 text-[11px] mt-1 mb-2 line-clamp-2">Endless entertainment from Disney, Pixar, and more.</p>
+<button class="border border-disney-blue bg-disney-blue/20 text-white text-[10px] font-semibold px-3 py-1 rounded-full hover:bg-disney-blue/40 transition">Streaming</button>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-2xl border border-netflix-red/50 shadow-deep-dark hover:shadow-card-glow-netflix transition-all duration-300 ease-in-out transform hover:-translate-y-1">
+<img alt="YouTube Movies background" class="absolute inset-0 h-full w-full object-cover opacity-30 transition-opacity duration-300 group-hover:opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD2nCZQu7Toq62vvr4w2Mft6YRSt3Qcypi4JaepLy2BiqaUbAJa6d4Jke2XWjeBtH_0MKfoeretseObUQYkIDsQ3RoOrLzGE0QDNMus_RQ8WhGkMEN6YGxYtvS8ALUO8NJ_U-V_VzfV_Y2vzW_iFUFzO1guAzcLSa8pRZX6B6LIcYu51pRGxncojOh93xKQBGFquKQpXJ2qXSaxzVw0qqtkZKXS1t4LUMbrP247ujhi3_HAeptNUWC-n4uagBdvyEf8kOeybGRsx_I"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
+<button class="absolute top-2 right-2 text-white/70 hover:text-white transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+<div class="relative flex flex-col justify-end h-56 p-3">
+<div>
+<h3 class="text-base font-bold">YouTube Movies</h3>
+<p class="text-gray-300 text-[11px] mt-1 mb-2 line-clamp-2">Rent or buy your favorite movies on YouTube.</p>
+<button class="border border-netflix-red bg-netflix-red/20 text-white text-[10px] font-semibold px-3 py-1 rounded-full hover:bg-netflix-red/40 transition">Rental</button>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-6 flex justify-center">
+<a class="text-sm font-medium text-accent" href="#">See More</a>
+</div>
+</section>
+<section>
+<div class="flex items-center justify-between mb-4">
+<h2 class="text-2xl font-bold">TV Shows</h2>
+</div>
+<div class="grid grid-cols-2 gap-6">
+<div class="group relative overflow-hidden rounded-2xl border border-disney-blue/50 shadow-deep-dark hover:shadow-card-glow-disney transition-all duration-300 ease-in-out transform hover:-translate-y-1">
+<img alt="Hulu background" class="absolute inset-0 h-full w-full object-cover opacity-30 transition-opacity duration-300 group-hover:opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCevZegVAZZJgGGMosRZE0ZPw95lWHP3y6LaOoXFU_Dr3pz4fjzuR5ii3iZFkPc9bvNFu_i94HI14epmaaKolojUfFTtvflmpsl30syaSdoKWNkoGJ0z3TpGuC0piBkyfyVNTYuicpPVzQGHyprdDMDytXyPOA6UKi_WjFIiyU3XJjI1kjzmqVaQ21CzCm9Mh5b1VkgzVzW7OF8oJ5a79LR6Dt-HDnRu3dSQADUBaU82Bv_fWkEzL80aBd20lcuHb45nBDrO0Y_fKE"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
+<button class="absolute top-2 right-2 text-white/70 hover:text-white transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+<div class="relative flex flex-col justify-end h-56 p-3">
+<div>
+<h3 class="text-base font-bold">Hulu</h3>
+<p class="text-gray-300 text-[11px] mt-1 mb-2 line-clamp-2">Watch current season episodes and classic shows.</p>
+<button class="border border-disney-blue bg-disney-blue/20 text-white text-[10px] font-semibold px-3 py-1 rounded-full hover:bg-disney-blue/40 transition">Streaming</button>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-2xl border border-netflix-red/50 shadow-deep-dark hover:shadow-card-glow-netflix transition-all duration-300 ease-in-out transform hover:-translate-y-1">
+<img alt="Netflix TV background" class="absolute inset-0 h-full w-full object-cover opacity-30 transition-opacity duration-300 group-hover:opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAdzI6-MafQ2WjCYGnLM9xdA7WFhtizloEEGgjof2oICvrcLtlojWb2_Cvsxu8k7FwYOCm2LoD0Hff0_ELzf0tDKkPRLZbHlIjdt4WJDgqzqATmTMetUhRLyKZ617jRvctmARJ_m8VUi0igHoP2L9F1BBvhbWAwqw3KhqMGzdsTQQctO1wc_QBoMuV8WHZKT-Jf3ISiakFcPjLS-vr_MiDJNGjM4czwiI82xlP8f5Ebc1HlQP7TiYZlYr7C1VUkotfXqL-0i8lPK2U"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
+<button class="absolute top-2 right-2 text-white/70 hover:text-white transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+<div class="relative flex flex-col justify-end h-56 p-3">
+<div>
+<h3 class="text-base font-bold">Netflix</h3>
+<p class="text-gray-300 text-[11px] mt-1 mb-2 line-clamp-2">Binge-watch acclaimed series and documentaries.</p>
+<button class="border border-netflix-red bg-netflix-red/20 text-white text-[10px] font-semibold px-3 py-1 rounded-full hover:bg-netflix-red/40 transition">Streaming</button>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-2xl border border-imdb-yellow/50 shadow-deep-dark hover:shadow-card-glow-imdb transition-all duration-300 ease-in-out transform hover:-translate-y-1">
+<img alt="IMDb TV background" class="absolute inset-0 h-full w-full object-cover opacity-30 transition-opacity duration-300 group-hover:opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDD4Jxwl3Oelk4of_n1nI_a_sSGzLfdMU6wiC0-EBoCi0cMCuiTOXqShaUBusrNtfEdLO6bO6ly2QQAUSeTJOslR12KgkcyoVEQ062FrSO4lUGcHXxuNEdvNY5ZX2Hdt12i1U8nhauTnBDVbJ6-xjJiraCsDbPibhYKIkgAoKN1rGcgHwbyB9XHPhByhKdsFEQHGFsiGAYYc8EezLstGXGTKPRkGfX1sQZRURNIyCgALOT1ggw1HWLPWkgPhVkRcEAYJyjo4fvIXf0"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
+<button class="absolute top-2 right-2 text-white/70 hover:text-white transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+<div class="relative flex flex-col justify-end h-56 p-3">
+<div>
+<h3 class="text-base font-bold">IMDb TV</h3>
+<p class="text-gray-300 text-[11px] mt-1 mb-2 line-clamp-2">Free streaming of TV shows and movies.</p>
+<button class="border border-imdb-yellow bg-imdb-yellow/20 text-white text-[10px] font-semibold px-3 py-1 rounded-full hover:bg-imdb-yellow/40 transition">Free</button>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-2xl border border-disney-blue/50 shadow-deep-dark hover:shadow-card-glow-disney transition-all duration-300 ease-in-out transform hover:-translate-y-1">
+<img alt="Disney+ TV background" class="absolute inset-0 h-full w-full object-cover opacity-30 transition-opacity duration-300 group-hover:opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBB3ubUreutZIuQZ16u-MfyZrMSrPLxgSiwL1jkPjrOw0v6cSb4BIYnF7QRpPmk3j_x_M9_q2QWE4JmkihrWHVodt_qjeNfe_0PEfIFLo56PTBIRMTQZQvgkNFPrBbW5NKMmOPbIRM6HJvXhBtEJduG37on7coqV3M861cAOENkc__S7KrO5don4ELY2uERNVP-g6rD1qXwLVjA7p9EYwEalZkJWAhQDC0zDKNCNA363zQh2ylCiOW_sBGZk8ffdvwF1UbceKW7T-Y"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
+<button class="absolute top-2 right-2 text-white/70 hover:text-white transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+<div class="relative flex flex-col justify-end h-56 p-3">
+<div>
+<h3 class="text-base font-bold">Disney+</h3>
+<p class="text-gray-300 text-[11px] mt-1 mb-2 line-clamp-2">Exclusive shows from Star Wars, Marvel, and more.</p>
+<button class="border border-disney-blue bg-disney-blue/20 text-white text-[10px] font-semibold px-3 py-1 rounded-full hover:bg-disney-blue/40 transition">Streaming</button>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-6 flex justify-center">
+<a class="text-sm font-medium text-accent" href="#">See More</a>
+</div>
+</section>
+<section>
+<div class="flex items-center justify-between mb-4">
+<h2 class="text-2xl font-bold">Books</h2>
+</div>
+<div class="grid grid-cols-2 gap-6">
+<div class="group relative overflow-hidden rounded-2xl border border-goodreads-brown/50 shadow-deep-dark hover:shadow-card-glow-goodreads transition-all duration-300 ease-in-out transform hover:-translate-y-1">
+<img alt="Goodreads background" class="absolute inset-0 h-full w-full object-cover opacity-30 transition-opacity duration-300 group-hover:opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCtRJ4vALimZSV8bGKDbKJwfJhzN597INSvmhL8GEHiezr1UBY1AgJuZTeTfM1kcMXzDF20MdoOGQRY_a0RK_x--NbSsuFInC2sRwVL0ykKW5szODZWhUI4oo6SWA6NwQ6Y6UiyFLSN9qFijDM7vzFdTJ2-M4Gb8cA_Bllxt-_voc4OtrGFciLgnCgAEjD7pQaCgRdQObEsRq8WLf8KvpD6HSIl717uxnlBaCsLJ7sIQfc5y-pKXvI2PWr7ljB5z8ffI25Ubr7_Pf0"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
+<button class="absolute top-2 right-2 text-white/70 hover:text-white transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+<div class="relative flex flex-col justify-end h-56 p-3">
+<div>
+<h3 class="text-base font-bold">Goodreads</h3>
+<p class="text-gray-300 text-[11px] mt-1 mb-2 line-clamp-2">Discover and share books you love.</p>
+<button class="border border-goodreads-brown bg-goodreads-brown/20 text-white text-[10px] font-semibold px-3 py-1 rounded-full hover:bg-goodreads-brown/40 transition">Community</button>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-2xl border border-goodreads-brown/50 shadow-deep-dark hover:shadow-card-glow-goodreads transition-all duration-300 ease-in-out transform hover:-translate-y-1">
+<img alt="Audible background" class="absolute inset-0 h-full w-full object-cover opacity-30 transition-opacity duration-300 group-hover:opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBwxgl-ojYKLr3LGOrwULXNXsnPYY9L8adsDrGgGiZr4Td83ysD8ozB7jJh1MRr2OL9IkQWDn4hCSDJkbxfA6JBeA8N858Sz2A0GTcexecT7IC6YYKT6dSOuamiAkJL6gONkRquD3xpLCKmdSbEwrFKHuYjVlZhx04yTJHxG9U8Dg_8bTji7Dx1JucpNVBilwWDDLew9JV4c5YNsW2AbZxQiHbNBbRZbp2Zu9By64GyPfSpmkBs1brBqQtIBZXHXE2cmbc3kkcHbU8"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
+<button class="absolute top-2 right-2 text-white/70 hover:text-white transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+<div class="relative flex flex-col justify-end h-56 p-3">
+<div>
+<h3 class="text-base font-bold">Audible</h3>
+<p class="text-gray-300 text-[11px] mt-1 mb-2 line-clamp-2">The world's largest selection of audiobooks.</p>
+<button class="border border-goodreads-brown bg-goodreads-brown/20 text-white text-[10px] font-semibold px-3 py-1 rounded-full hover:bg-goodreads-brown/40 transition">Audiobooks</button>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-2xl border border-goodreads-brown/50 shadow-deep-dark hover:shadow-card-glow-goodreads transition-all duration-300 ease-in-out transform hover:-translate-y-1">
+<img alt="Kindle Store background" class="absolute inset-0 h-full w-full object-cover opacity-30 transition-opacity duration-300 group-hover:opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAkw2K9Q0sjZXHgT_LO1crarIMGbFC6gHmzERKiaUVsyM9ERL-GLUnC3PZH6VS0trLE3mGJbBWcF7wN4vWTf4dWddkDegkqYoQXd1QZgV4qd6LcV6rFrLHCBJgiCvzScj-tYlvm6xSvcWdUPQ-eWJAMahDw3mwmC5o_wY-MSHVl_QK2TMB3w2X-cpAUAWkvsYe4xvoae1rzGgHrgKF1xBOAFhoI9tFkeoMOPDR_idnAIkjiDYt80VRHscHSYoElrkM3fgswiJXaT7E"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
+<button class="absolute top-2 right-2 text-white/70 hover:text-white transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+<div class="relative flex flex-col justify-end h-56 p-3">
+<div>
+<h3 class="text-base font-bold">Kindle Store</h3>
+<p class="text-gray-300 text-[11px] mt-1 mb-2 line-clamp-2">Buy and read ebooks on any device.</p>
+<button class="border border-goodreads-brown bg-goodreads-brown/20 text-white text-[10px] font-semibold px-3 py-1 rounded-full hover:bg-goodreads-brown/40 transition">Ebooks</button>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-2xl border border-goodreads-brown/50 shadow-deep-dark hover:shadow-card-glow-goodreads transition-all duration-300 ease-in-out transform hover:-translate-y-1">
+<img alt="Project Gutenberg background" class="absolute inset-0 h-full w-full object-cover opacity-30 transition-opacity duration-300 group-hover:opacity-50" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCV32qbr8NFBlLf33F-bXqkjNGYKNGd3Qbg3gndGCaQEdR6HeKjp7yP1n2vrrv_2gi9IUDsPUs0uO1F5Iyx3ZC2qxqMJNU5ta1xy-o4mk8sEg50gDNy63PQSY7tSl5A5ooEDLb67hXuJyfYOJEePoQEhpcLR7xx5Xr8cvJhgcDRsN9vV0ufK-BdUqlM5OmrrGMD_Kyvrk1X8rxURMdM09tWRUoc9P5wqpn9VwbNp3msKsQ0Z0qwm-i003IKy-VanKqqMwVfYuiTxSw"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent"></div>
+<button class="absolute top-2 right-2 text-white/70 hover:text-white transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+<div class="relative flex flex-col justify-end h-56 p-3">
+<div>
+<h3 class="text-base font-bold">Project Gutenberg</h3>
+<p class="text-gray-300 text-[11px] mt-1 mb-2 line-clamp-2">A library of over 60,000 free eBooks.</p>
+<button class="border border-goodreads-brown bg-goodreads-brown/20 text-white text-[10px] font-semibold px-3 py-1 rounded-full hover:bg-goodreads-brown/40 transition">Free Ebooks</button>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-6 flex justify-center">
+<a class="text-sm font-medium text-accent" href="#">See More</a>
+</div>
+</section>
+</main>
+<button class="fixed bottom-6 right-6 bg-accent text-white rounded-full p-4 shadow-lg hover:bg-red-700 transition-colors z-30">
+<span class="material-symbols-outlined">bookmark</span>
+</button>
+</div>
+</body></html>

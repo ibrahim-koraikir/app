@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChatHistoryState">
+    <option name="chatSessions" value="{&quot;a9c6e38f-5f1e-4932-9b32-8bfa6bf2ec83&quot;:{&quot;id&quot;:&quot;a9c6e38f-5f1e-4932-9b32-8bfa6bf2ec83&quot;,&quot;name&quot;:&quot;Greeting the Indexing App&quot;,&quot;timestamp&quot;:1763296438763,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:[{&quot;type&quot;:&quot;text&quot;,&quot;text&quot;:&quot;\u003cuser_query\u003e\nhello index this app\n\u003c/user_query\u003e&quot;}]},{&quot;role&quot;:&quot;assistant&quot;,&quot;content&quot;:[]}]},&quot;a6215631-cd2e-4150-8a2a-94cc40295114&quot;:{&quot;id&quot;:&quot;a6215631-cd2e-4150-8a2a-94cc40295114&quot;,&quot;name&quot;:&quot;New Chat&quot;,&quot;timestamp&quot;:1763730914819,&quot;messages&quot;:[]}}" />
+  </component>
+</project>
