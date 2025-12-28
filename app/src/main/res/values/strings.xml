@@ -1,3 +1,80 @@
 <resources>
     <string name="app_name">Bro</string>
+    
+    <!-- WebView error messages -->
+    <string name="error_invalid_url">Invalid URL</string>
+    <string name="error_invalid_url_format">Invalid URL format</string>
+    <string name="error_invalid_download_url">Invalid download URL</string>
+    <string name="error_unsupported_url_scheme">Only HTTP/HTTPS URLs are supported</string>
+    <string name="error_tab_not_found">Tab not found</string>
+    <string name="error_failed_create_tab">Failed to create tab: %1$s</string>
+    <string name="error_failed_switch_tab">Failed to switch tab: %1$s</string>
+    <string name="error_failed_close_tab">Failed to close tab: %1$s</string>
+    <string name="error_failed_open_new_tab">Failed to open new tab: %1$s</string>
+    <string name="error_failed_start_download">Failed to start download: %1$s</string>
+    <string name="error_failed_add_bookmark">Failed to add bookmark: %1$s</string>
+    <string name="error_storage_permission_required">Storage permission required. Please grant permission in Settings to download videos.</string>
+    <string name="error_video_format_not_supported">Video format not supported for download: %1$s</string>
+    
+    <!-- WebView success messages -->
+    <string name="message_tab_opened_background">Tab opened in background</string>
+    <string name="message_bookmark_added">Bookmark added</string>
+    <string name="message_bookmark_removed">Bookmark removed</string>
+    <string name="message_download_started">Download started: %1$s (%2$s)</string>
+    
+    <!-- Share -->
+    <string name="share_default_title">Check out this website</string>
+    <string name="share_via">Share via</string>
+    
+    <!-- Tab defaults -->
+    <string name="new_tab">New Tab</string>
+    
+    <!-- Favorites -->
+    <string name="remove_favorite_dialog_title">Remove from Favorites?</string>
+    <string name="remove_favorite_dialog_message">Are you sure you want to remove \"%1$s\" from your favorites?</string>
+    <string name="remove_favorite_confirm">Remove</string>
+    <string name="remove_favorite_cancel">Cancel</string>
+    
+    <!-- Long press -->
+    <string name="open_in_new_tab_hint">Long press to open in new tab</string>
+    
+    <!-- Settings - Privacy -->
+    <string name="settings_privacy_section">PRIVACY</string>
+    <string name="settings_clear_browsing_data">Clear Browsing Data</string>
+    <string name="settings_clear_browsing_data_description">Clear cookies, site data, and logins</string>
+    <string name="settings_clear_browsing_data_dialog_title">Clear Browsing Data</string>
+    <string name="settings_clear_browsing_data_dialog_message">This will clear all cookies, site data, and saved logins. You will be logged out of all websites.</string>
+    <string name="settings_browsing_data_cleared">Browsing data cleared successfully</string>
+    
+    <!-- Page Error Overlay -->
+    <string name="error_retry">Try Again</string>
+    <string name="error_go_back">Go Back</string>
+    
+    <!-- No Internet -->
+    <string name="error_no_internet_title">No Internet Connection</string>
+    <string name="error_no_internet_desc">Please check your internet connection and try again.</string>
+    
+    <!-- Timeout -->
+    <string name="error_timeout_title">Connection Timed Out</string>
+    <string name="error_timeout_desc">The page took too long to load. Please try again.</string>
+    
+    <!-- Server Error -->
+    <string name="error_server_title">Server Error</string>
+    <string name="error_server_desc">The website is having issues. Please try again later.</string>
+    
+    <!-- SSL Error -->
+    <string name="error_ssl_title">Connection Not Secure</string>
+    <string name="error_ssl_desc">This site has a security certificate problem.</string>
+    
+    <!-- Page Not Found -->
+    <string name="error_not_found_title">Page Not Found</string>
+    <string name="error_not_found_desc">The page you\'re looking for doesn\'t exist or has been moved.</string>
+    
+    <!-- Blocked by AdBlock -->
+    <string name="error_blocked_title">Page Blocked</string>
+    <string name="error_blocked_desc">This page was blocked because it may contain harmful content.</string>
+    
+    <!-- Unknown Error -->
+    <string name="error_unknown_title">Something Went Wrong</string>
+    <string name="error_unknown_desc">We couldn\'t load this page. Please try again.</string>
 </resources>

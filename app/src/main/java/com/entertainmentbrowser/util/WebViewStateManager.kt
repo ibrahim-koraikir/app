@@ -5,9 +5,20 @@ import android.webkit.WebView
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Manages WebView instances and their states for tabs
- * Each tab gets its own WebView that persists across screen switches
- * Implements LRU eviction to prevent memory issues on low-end devices
+ * Manages WebView instances and their states for tabs.
+ * Each tab gets its own WebView that persists across screen switches.
+ * Implements LRU eviction to prevent memory issues on low-end devices.
+ * 
+ * ## Memory Leak Prevention
+ * 
+ * When removing or recycling WebViews, use [releaseWebViewForPooling] to ensure
+ * all UI-specific references are cleared before the WebView is returned to the pool.
+ * This prevents Activity/Fragment leaks from:
+ * - WebViewClient/WebChromeClient holding Activity references
+ * - JavaScript interfaces holding UI-scoped references
+ * - Listeners capturing Activity scope
+ * 
+ * @see WebViewPool for pool-level documentation on memory safety
  */
 class WebViewStateManager {
     
@@ -56,13 +67,97 @@ class WebViewStateManager {
     }
     
     /**
-     * Remove WebView when tab is closed
+     * Remove WebView when tab is closed.
+     * The WebView is destroyed, not recycled to the pool.
+     * Also releases the GPU hardware-acceleration slot.
      */
     fun removeWebView(tabId: String) {
         webViewCache.remove(tabId)?.let { webView ->
+            // Clear UI references before destroying to prevent any lingering callbacks
+            releaseWebViewReferences(webView)
             webView.destroy()
         }
         stateCache.remove(tabId)
+        lastAccessTime.remove(tabId)
+        
+        // Release GPU hardware-acceleration slot
+        GpuMemoryManager.releaseTab(tabId)
+        android.util.Log.d("WebViewStateManager", "Released GPU slot for tab $tabId")
+    }
+    
+    /**
+     * Release a WebView for pooling instead of destroying it.
+     * 
+     * This method:
+     * 1. Removes the WebView from the cache
+     * 2. Clears all UI-specific references (clients, listeners, JS interfaces)
+     * 3. Returns the WebView to the pool for reuse
+     * 
+     * Use this instead of [removeWebView] when you want to recycle the WebView
+     * for better performance.
+     * 
+     * @param tabId The tab ID whose WebView should be released
+     * @param additionalJsInterfaces Additional JavaScript interface names to remove (optional)
+     */
+    fun releaseWebViewForPooling(tabId: String, additionalJsInterfaces: List<String> = emptyList()) {
+        webViewCache.remove(tabId)?.let { webView ->
+            // Clear all UI-specific references before recycling
+            releaseWebViewReferences(webView, additionalJsInterfaces)
+            
+            // Return to pool for reuse
+            WebViewPool.recycle(webView)
+            
+            android.util.Log.d("WebViewStateManager", "Released WebView for tab $tabId to pool")
+        }
+        stateCache.remove(tabId)
+        lastAccessTime.remove(tabId)
+        
+        // Release GPU hardware-acceleration slot so new tabs can use it
+        GpuMemoryManager.releaseTab(tabId)
+        android.util.Log.d("WebViewStateManager", "Released GPU slot for tab $tabId")
+    }
+    
+    /**
+     * Clear all UI-specific references from a WebView to prevent memory leaks.
+     * 
+     * This is called before destroying or recycling a WebView to ensure:
+     * - WebViewClient/WebChromeClient don't hold Activity references
+     * - JavaScript interfaces don't hold UI-scoped references
+     * - Listeners don't capture Activity scope
+     * 
+     * @param webView The WebView to clean up
+     * @param additionalJsInterfaces Additional JavaScript interface names to remove
+     */
+    private fun releaseWebViewReferences(
+        webView: WebView,
+        additionalJsInterfaces: List<String> = emptyList()
+    ) {
+        try {
+            webView.apply {
+                // Clear WebViewClient to prevent Activity leaks
+                webViewClient = android.webkit.WebViewClient()
+                
+                // Clear WebChromeClient to prevent Activity leaks
+                webChromeClient = null
+                
+                // Remove known JavaScript interfaces
+                // "AndroidInterface" is used by CustomWebView for video detection
+                removeJavascriptInterface("AndroidInterface")
+                
+                // Remove any additional JS interfaces specified by caller
+                additionalJsInterfaces.forEach { name ->
+                    removeJavascriptInterface(name)
+                }
+                
+                // Clear all listeners that may hold Activity/Fragment references
+                setOnTouchListener(null)
+                setOnLongClickListener(null)
+                setOnScrollChangeListener(null)
+                setDownloadListener(null)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("WebViewStateManager", "Failed to release WebView references", e)
+        }
     }
     
     /**
@@ -119,6 +214,9 @@ class WebViewStateManager {
     /**
      * Evict the least recently used WebView from cache
      * Excludes currently active tabs to prevent disruption
+     * 
+     * Uses [releaseWebViewForPooling] to recycle the WebView instead of destroying it,
+     * which frees GPU/heap memory while allowing the WebView to be reused.
      */
     private fun evictLeastRecentlyUsed() {
         // Find LRU tab (excluding currently active tabs)
@@ -129,8 +227,9 @@ class WebViewStateManager {
         
         lruTabId?.let { tabId ->
             android.util.Log.d("WebViewStateManager", "Evicting LRU WebView for tab: $tabId")
-            removeWebView(tabId)
-            lastAccessTime.remove(tabId)
+            // Use releaseWebViewForPooling to recycle instead of destroy
+            // This frees GPU/heap memory while allowing WebView reuse
+            releaseWebViewForPooling(tabId, listOf("AndroidInterface"))
         }
     }
     
@@ -167,27 +266,6 @@ class WebViewStateManager {
     
     companion object {
         private const val MAX_CACHED_WEBVIEWS = 20  // Match your max tabs
-    }
-
-    // Track monetized tabs (AdBlock disabled)
-    private val monetizedTabs = ConcurrentHashMap.newKeySet<String>()
-
-    /**
-     * Set a tab as monetized (AdBlock disabled)
-     */
-    fun setMonetized(tabId: String, isMonetized: Boolean) {
-        if (isMonetized) {
-            monetizedTabs.add(tabId)
-        } else {
-            monetizedTabs.remove(tabId)
-        }
-    }
-
-    /**
-     * Check if a tab is monetized
-     */
-    fun isMonetized(tabId: String): Boolean {
-        return monetizedTabs.contains(tabId)
     }
 }
 

@@ -96,12 +96,15 @@ fun WebsiteCard(
         Box(
             modifier = Modifier.fillMaxSize()
         ) {
-            // Background image - covers entire card
+            // Background image - covers entire card with proper fitting
             AsyncImage(
                 model = website.logoUrl,
                 contentDescription = "${website.name} logo",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(16.dp)),
+                contentScale = ContentScale.Crop,
+                alignment = Alignment.Center
             )
             
             // Gradient overlay for text readability
@@ -180,11 +183,9 @@ fun WebsiteCard(
                 ) {
                     Text(
                         text = getCategoryDisplayName(website.category),
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary
+                        color = borderColor,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }
@@ -202,6 +203,7 @@ private fun getCategoryBorderColor(category: Category): Color {
         Category.GAMES -> Color(0xFF9146FF)
         Category.VIDEO_CALL -> Color(0xFF00AFF0)
         Category.ARABIC -> Color(0xFF1DB954)
+        Category.TRENDING -> Color(0xFFFF6B6B)
     }
 }
 
@@ -215,6 +217,7 @@ private fun getCategoryDisplayName(category: Category): String {
         Category.GAMES -> "Games"
         Category.VIDEO_CALL -> "Video Call"
         Category.ARABIC -> "عربي"
+        Category.TRENDING -> "Trending"
     }
 }
 

@@ -27,6 +27,16 @@ sealed class HomeEvent {
     data class WebsiteClicked(val url: String) : HomeEvent()
     
     /**
+     * User submitted search bar input (URL or search query)
+     */
+    data class SearchBarSubmit(val input: String) : HomeEvent()
+    
+    /**
+     * Navigation event consumed
+     */
+    data object NavigationConsumed : HomeEvent()
+    
+    /**
      * User pulled to refresh
      */
     data object Refresh : HomeEvent()
@@ -35,4 +45,14 @@ sealed class HomeEvent {
      * User cleared error message
      */
     data object ClearError : HomeEvent()
+    
+    /**
+     * User long-pressed a website card to open in new tab
+     */
+    data class OpenInNewTab(val url: String, val title: String) : HomeEvent()
+    
+    /**
+     * Snackbar message consumed
+     */
+    data object SnackbarConsumed : HomeEvent()
 }

@@ -6,44 +6,84 @@ package com.entertainmentbrowser.presentation.webview
 object VideoDetector {
     
     /**
-     * JavaScript code to inject into web pages for video element detection
+     * JavaScript code to inject into web pages for video element detection and play state monitoring
      */
     const val VIDEO_DETECTION_SCRIPT = """
         (function() {
-            // Detect video elements
-            const videos = document.querySelectorAll('video');
-            if (videos.length > 0) {
-                videos.forEach(video => {
-                    if (video.src) {
-                        window.AndroidInterface.onVideoDetected(video.src);
+            // Track which videos we've already set up listeners for
+            const trackedVideos = new WeakSet();
+            
+            // Setup play/pause listeners for a video element
+            function setupVideoListeners(video) {
+                if (trackedVideos.has(video)) return;
+                trackedVideos.add(video);
+                
+                // Detect video source
+                const videoSrc = video.src || video.currentSrc;
+                if (videoSrc) {
+                    window.AndroidInterface.onVideoDetected(videoSrc);
+                }
+                
+                // Check source elements
+                const sources = video.querySelectorAll('source');
+                sources.forEach(source => {
+                    if (source.src) {
+                        window.AndroidInterface.onVideoDetected(source.src);
                     }
-                    // Check source elements
-                    const sources = video.querySelectorAll('source');
-                    sources.forEach(source => {
-                        if (source.src) {
-                            window.AndroidInterface.onVideoDetected(source.src);
-                        }
-                    });
                 });
+                
+                // Listen for play event
+                video.addEventListener('play', function() {
+                    window.AndroidInterface.onVideoPlayingStateChanged(true);
+                });
+                
+                // Listen for playing event (fires when actually playing after buffering)
+                video.addEventListener('playing', function() {
+                    window.AndroidInterface.onVideoPlayingStateChanged(true);
+                });
+                
+                // Listen for pause event
+                video.addEventListener('pause', function() {
+                    window.AndroidInterface.onVideoPlayingStateChanged(false);
+                });
+                
+                // Listen for ended event
+                video.addEventListener('ended', function() {
+                    window.AndroidInterface.onVideoPlayingStateChanged(false);
+                });
+                
+                // Check if video is already playing
+                if (!video.paused && !video.ended && video.readyState > 2) {
+                    window.AndroidInterface.onVideoPlayingStateChanged(true);
+                }
             }
+            
+            // Detect existing video elements
+            const videos = document.querySelectorAll('video');
+            videos.forEach(video => setupVideoListeners(video));
             
             // Monitor for dynamically added videos
             const observer = new MutationObserver(mutations => {
                 mutations.forEach(mutation => {
                     mutation.addedNodes.forEach(node => {
-                        if (node.tagName === 'VIDEO') {
-                            if (node.src) {
-                                window.AndroidInterface.onVideoDetected(node.src);
+                        if (node.nodeType === 1) {
+                            if (node.tagName === 'VIDEO') {
+                                setupVideoListeners(node);
                             }
+                            // Also check for videos inside added containers
+                            const nestedVideos = node.querySelectorAll ? node.querySelectorAll('video') : [];
+                            nestedVideos.forEach(video => setupVideoListeners(video));
                         }
                     });
                 });
             });
             
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true
-            });
+            if (document.body) {
+                observer.observe(document.body, {
+                    childList: true,
+                    subtree: true
+                });
+            }
         })();
     """
     
@@ -69,23 +109,14 @@ object VideoDetector {
     
     /**
      * Check if a URL matches video patterns
+     * PERFORMANCE: Removed debug logging that ran on every URL check
      */
     fun isVideoUrl(url: String): Boolean {
-        android.util.Log.d("VideoDetector", "Checking URL: $url")
-        
+        // Fast path: check common patterns first
         if (VIDEO_URL_PATTERN.matches(url)) {
-            android.util.Log.d("VideoDetector", "✅ Matched VIDEO_URL_PATTERN")
             return true
         }
-        
-        val matchedPattern = STREAMING_PATTERNS.any { it.matches(url) }
-        if (matchedPattern) {
-            android.util.Log.d("VideoDetector", "✅ Matched STREAMING_PATTERNS")
-            return true
-        }
-        
-        android.util.Log.d("VideoDetector", "❌ No pattern matched")
-        return false
+        return STREAMING_PATTERNS.any { it.matches(url) }
     }
     
     /**

@@ -23,12 +23,12 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import com.entertainmentbrowser.presentation.common.BottomNavigationBar
 import com.entertainmentbrowser.presentation.bookmarks.BookmarksScreen
-import com.entertainmentbrowser.presentation.favorites.FavoritesScreen
 import com.entertainmentbrowser.presentation.home.HomeScreen
 import com.entertainmentbrowser.presentation.onboarding.OnboardingScreen
 import com.entertainmentbrowser.presentation.sessions.SessionsScreen
 import com.entertainmentbrowser.presentation.tabs.TabsScreen
 import com.entertainmentbrowser.presentation.webview.WebViewScreen
+import com.entertainmentbrowser.util.adblock.AntiAdblockBypass
 import com.entertainmentbrowser.util.adblock.FastAdBlockEngine
 import dagger.hilt.android.EntryPointAccessors
 import com.entertainmentbrowser.EntertainmentBrowserApp
@@ -77,6 +77,12 @@ fun EntertainmentNavHost(
         appContext.webViewStateManager
     }
     
+    // Get AntiAdblockBypass from Hilt - shared across all tabs
+    val antiAdblockBypass = remember {
+        val appContext = context.applicationContext as EntertainmentBrowserApp
+        appContext.antiAdblockBypass
+    }
+    
     // Get DownloadRepository from Hilt
     val downloadRepository = remember {
         val appContext = context.applicationContext as EntertainmentBrowserApp
@@ -117,20 +123,15 @@ fun EntertainmentNavHost(
                 onNavigateToWebView = { url ->
                     navController.navigate(Screen.WebView.createRoute(url))
                 },
-                onNavigateToFavorites = {
-                     navController.navigate(Screen.Favorites.route)
+                onNavigateToBookmarks = {
+                    navController.navigate(Screen.Bookmarks.route)
                 },
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)
-                }
-            )
-        }
-        
-        // Favorites screen
-        composable(route = Screen.Favorites.route) {
-            FavoritesScreen(
-                onNavigateToWebView = { url ->
-                    navController.navigate(Screen.WebView.createRoute(url))
+                },
+                onNavigateToActiveTab = {
+                    // Navigate to WebView to show active tab (no new tab created)
+                    navController.navigate(Screen.WebView.createActiveTabRoute())
                 }
             )
         }
@@ -151,6 +152,7 @@ fun EntertainmentNavHost(
                 },
                 fastAdBlockEngine = fastAdBlockEngine,
                 advancedAdBlockEngine = advancedAdBlockEngine,
+                antiAdblockBypass = antiAdblockBypass,
                 webViewStateManager = webViewStateManager,
                 downloadRepository = downloadRepository
             )

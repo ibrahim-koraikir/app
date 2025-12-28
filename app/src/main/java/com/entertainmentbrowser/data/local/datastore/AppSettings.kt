@@ -1,5 +1,7 @@
 package com.entertainmentbrowser.data.local.datastore
 
+import com.entertainmentbrowser.domain.model.SearchEngine
+
 /**
  * Data class representing app settings stored in DataStore.
  * 
@@ -19,5 +21,9 @@ data class AppSettings(
      * 
      * Default: false (balanced mode - allows main-frame requests without redirect targets)
      */
-    val strictAdBlockingEnabled: Boolean = false
+    val strictAdBlockingEnabled: Boolean = false,
+    /**
+     * Selected search engine for the search bar.
+     */
+    val searchEngine: SearchEngine = SearchEngine.GOOGLE
 )

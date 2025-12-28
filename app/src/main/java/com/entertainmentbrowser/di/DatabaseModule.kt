@@ -61,6 +61,38 @@ object DatabaseModule {
         }
     }
     
+    private val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Delete all websites to repopulate with new TRENDING category
+            db.execSQL("DELETE FROM websites")
+        }
+    }
+    
+    private val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Add contentUri and displayPath columns for scoped storage support
+            db.execSQL("ALTER TABLE downloads ADD COLUMN contentUri TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN displayPath TEXT DEFAULT NULL")
+        }
+    }
+    
+    private val MIGRATION_9_10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Add lastAccessedAt column for tab cleanup based on access time
+            // Default to timestamp for existing tabs
+            db.execSQL("ALTER TABLE tabs ADD COLUMN lastAccessedAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE tabs SET lastAccessedAt = timestamp WHERE lastAccessedAt = 0")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_tabs_lastAccessedAt` ON `tabs` (`lastAccessedAt`)")
+        }
+    }
+    
+    private val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Delete all websites to repopulate with new TRENDING category websites
+            db.execSQL("DELETE FROM websites")
+        }
+    }
+    
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
@@ -69,14 +101,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             Constants.DATABASE_NAME
         )
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
-            // Destructive migration is intentionally disabled to prevent data loss.
-            // All schema changes MUST provide explicit migration paths.
-            // If a migration path is missing, the app will crash with IllegalStateException
-            // instead of silently deleting user data (favorites, tabs, download history, sessions).
-            // This ensures migration issues are caught during development and testing,
-            // not discovered by users losing their data in production.
-            // All future schema changes require implementing explicit Migration objects.
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)

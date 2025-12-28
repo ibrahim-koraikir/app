@@ -1,152 +1,71 @@
-# Monetization Fix - Action Tracking Added
+I have the following verification comments after thorough review and exploration of the codebase. Implement the comments by following the instructions in the comments verbatim.
 
-## Problem Found
+---
+## Comment 1: Legacy WRITE_EXTERNAL_STORAGE permission still present despite scoped storage plan.
 
-The monetization system was integrated but action tracking wasn't working properly. When you clicked websites from the home screen, it wasn't counting as an action.
+In `app/src/main/AndroidManifest.xml`, locate the `uses-permission` entries for storage near the top of the file. Remove the `WRITE_EXTERNAL_STORAGE` permission block entirely, including its `maxSdkVersion` and `tools:ignore` attributes. Leave the `READ_EXTERNAL_STORAGE` permission constrained to `maxSdkVersion="32"` and the `READ_MEDIA_VIDEO` permission constrained to `minSdkVersion="33"` as-is. Do not add any new broad storage permissions elsewhere.
 
-## What Was Fixed
+### Referred Files
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\AndroidManifest.xml
+---
+## Comment 2: CustomWebView JavaScript interface lacks planned URL validation and hardening.
 
-Added action tracking to:
-1. ✅ `createTabForUrl()` - When opening a website from home screen
-2. ✅ `openNewTab()` - When opening new tabs (but NOT for monetization ads)
-3. ✅ `UpdateUrl` event - When navigating within WebView (already working)
-4. ✅ `VideoDetected` event - When finding videos (already working)
+In `app/src/main/java/com/entertainmentbrowser/presentation/webview/CustomWebView.kt`, update the anonymous `jsInterface` object. Add a private helper method inside the object, for example `isValidAndSafeUrl(url: String): Boolean`, that checks for non-empty, non-"null" strings, enforces a reasonable maximum length (e.g. 2048 chars), parses the URL via `Uri.parse` or `URL` to ensure it is syntactically valid, and only allows `http` or `https` schemes. Inside `onVideoDetected` and `onVideoElementLongPress`, first validate the `videoUrl` with this helper and return early if it fails; only then call `VideoDetector.isVideoUrl` or `onLongPress`. Wrap each `@JavascriptInterface` method body in a try/catch that logs the exception and returns gracefully without propagating to the app, so malformed JS input cannot crash the process.
 
-## How It Works Now
+### Referred Files
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\presentation\webview\CustomWebView.kt
+---
+## Comment 3: CustomWebView still uses DownloadManager directly instead of DownloadRepository.
 
-```
-User Flow:
-==========
+In `app/src/main/java/com/entertainmentbrowser/presentation/webview/CustomWebView.kt`, update the `CustomWebView` composable signature to accept a `DownloadRepository` parameter after the existing `fastAdBlockEngine` and `webViewStateManager` parameters. In the `setDownloadListener` lambda, remove all direct `DownloadManager` usage, including building and enqueuing `DownloadManager.Request`. Instead, derive a filename with `URLUtil.guessFileName` as before, then call the injected `DownloadRepository` (for example `downloadRepository.startDownload(url, filename, null)` or similar depending on your API). Make sure any required context-dependent headers (cookies, user agent) are passed via the repository or its data source layer, not from the WebView directly. Update all call sites of `CustomWebView` to provide the `DownloadRepository` via Hilt or another DI mechanism so the API contract remains consistent.
 
-1. User clicks website from home → trackUserAction() → Counter: 1/9
-2. User clicks another website → trackUserAction() → Counter: 2/9
-3. User clicks link in WebView → trackUserAction() → Counter: 3/9
-4. User finds video → trackUserAction() → Counter: 4/9
-... continues ...
-9. User clicks website → trackUserAction() → Counter: 9/9
-   → THRESHOLD REACHED!
-   → Get ad URL
-   → Open ad in new tab (does NOT increment counter)
-   → Counter resets to 0/11
-```
+### Referred Files
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\presentation\webview\CustomWebView.kt
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\domain\repository\DownloadRepository.kt
+---
+## Comment 4: Room database still uses fallbackToDestructiveMigration, risking silent data loss.
 
-## Test It Now
+In `app/src/main/java/com/entertainmentbrowser/di/DatabaseModule.kt`, locate the `provideAppDatabase` function where the `Room.databaseBuilder` is configured. Remove the `.fallbackToDestructiveMigration()` call from the builder chain so only `.addMigrations(MIGRATION_4_5)` and the `.addCallback(...)` remain before `.build()`. Optionally add a comment above the builder indicating that destructive migrations are intentionally disabled and that all future schema changes must provide explicit `Migration` objects.
 
-### In Android Studio:
+### Referred Files
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\di\DatabaseModule.kt
+---
+## Comment 5: WebViewStateManager does not enforce MAX_CACHED_WEBVIEWS or implement LRU trimming.
 
-1. **Click the green Play button** (▶️) to rebuild and install
+In `app/src/main/java/com/entertainmentbrowser/util/WebViewStateManager.kt`, introduce a `ConcurrentHashMap<String, Long>` or similar to track last access timestamps per `tabId`. Update `getWebViewForTab`, `pauseWebView`, and `resumeWebView` to refresh the timestamp each time a tab is used. Before creating a new WebView in `getWebViewForTab`, check if `webViewCache.size` is greater than or equal to `MAX_CACHED_WEBVIEWS` and, if so, identify the least recently used `tabId` (oldest timestamp) and call `removeWebView` on that id. Add a public `trimCache(maxSize: Int = MAX_CACHED_WEBVIEWS)` method that repeatedly evicts LRU entries until the cache size is below the specified limit. Optionally call `trimCache()` from lifecycle-aware parts of the app (e.g. when sending the app to background) to proactively reduce memory usage.
 
-2. **Open Logcat** (bottom panel)
+### Referred Files
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\util\WebViewStateManager.kt
+---
+## Comment 6: WebViewViewModel still over-counts monetization actions on non-explicit user events.
 
-3. **Search for:** `MonetizationManager`
+In `app/src/main/java/com/entertainmentbrowser/presentation/webview/WebViewViewModel.kt`, remove the `trackUserAction()` invocation from `createTabForUrl`, so creating the initial tab for the incoming URL does not increment the monetization counter. In the `onEvent` `when` branch for `WebViewEvent.UpdateUrl`, delete the call to `trackUserAction()` so automatic navigation and redirects do not count as actions. In the branch for `WebViewEvent.VideoDetected`, remove the `trackUserAction()` call so passive detection does not contribute. Keep the call in `openNewTab` but ensure it remains guarded by `if (!monetizationManager.isMonetizationAd(url))`. Optionally, add new `trackUserAction()` calls only in handlers for explicit user-initiated actions such as “start download” or “share”, if you want those to influence ad frequency.
 
-4. **In the app:**
-   - Click on 10 different websites from home screen
-   - Each click should show in Logcat:
-     ```
-     MonetizationManager: Action tracked: 1/9
-     MonetizationManager: Action tracked: 2/9
-     ...
-     MonetizationManager: Should show ad: 9 >= 9
-     MonetizationManager: Next ad URL: https://www.effectivegatecpm.com/...
-     WebViewViewModel: 💰 Showing monetization ad: https://...
-     ```
+### Referred Files
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\presentation\webview\WebViewViewModel.kt
+---
+## Comment 7: Monetization whitelist is added but not integrated in ad-blocking components.
 
-5. **After 7-12 clicks:**
-   - A new tab should open with YOUR AD
-   - Not the same website, but your ad URL:
-     - `effectivegatecpm.com` OR
-     - `otieu.com`
+In `app/src/main/java/com/entertainmentbrowser/util/adblock/FastAdBlockEngine.kt`, inject `MonetizationManager` via the constructor alongside the `Context`. Inside `shouldBlock`, remove the local `monetizationDomains` list and instead extract the domain from the URL, then call `monetizationManager.isWhitelistedDomain(domain)`. If it returns true, immediately return `false` to allow the request. In `app/src/main/java/com/entertainmentbrowser/presentation/webview/AdBlockWebViewClient.kt`, add a `MonetizationManager` parameter to the constructor, and replace the local `monetizationDomains` list in `shouldOverrideUrlLoading` with a check against `monetizationManager.isMonetizationAd(requestUrl)` or a domain-based whitelist using `WHITELISTED_DOMAINS`. Update instantiation sites (e.g. in `CustomWebView`) to pass the `MonetizationManager` from DI. Finally, in `app/src/main/java/com/entertainmentbrowser/util/adblock/HardcodedFilters.kt`, at the top of `shouldBlock(url: String)`, extract the domain and return `false` early if it matches any domain in `MonetizationManager.WHITELISTED_DOMAINS` to ensure monetization traffic is never blocked by the hardcoded fallback.
 
-## Expected Behavior
+### Referred Files
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\util\MonetizationManager.kt
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\util\adblock\FastAdBlockEngine.kt
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\presentation\webview\AdBlockWebViewClient.kt
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\util\adblock\HardcodedFilters.kt
+---
+## Comment 8: HardcodedFilters.shouldBlock does not exempt monetization domains as planned.
 
-### Before Fix:
-- Click 10 websites → No logs → No ads → Same site opens in new tab
+In `app/src/main/java/com/entertainmentbrowser/util/adblock/HardcodedFilters.kt`, modify the `shouldBlock(url: String)` function. At the beginning of the method, before converting to lowercase and running block checks, extract the domain from the URL (either by reusing existing logic or adding a small helper similar to `FastAdBlockEngine.extractDomain`). Compare this domain against `MonetizationManager.WHITELISTED_DOMAINS`, and if it matches any entry, immediately return `false` to allow the request. Then proceed with the existing checks (`adDomains`, `adKeywords`, `hasSuspiciousPath`, `hasExcessiveTrackingParams`) only for non-whitelisted domains.
 
-### After Fix:
-- Click 10 websites → See logs counting → After 7-12 clicks → YOUR AD opens in new tab
+### Referred Files
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\util\adblock\HardcodedFilters.kt
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\util\MonetizationManager.kt
+---
+## Comment 9: SettingsScreen still uses placeholder privacy/terms URLs instead of production values.
 
-## Verification
+In `app/src/main/java/com/entertainmentbrowser/presentation/settings/SettingsScreen.kt`, update the `onClick` handlers for the "Privacy Policy" and "Terms of Service" items. Replace `"https://example.com/privacy"` with the real URL where your privacy policy is hosted, and similarly replace `"https://example.com/terms"` with your live terms of service URL. If these documents are not yet available, either point them to temporary hosted documents (e.g. on your domain or GitHub Pages) and add a TODO comment above indicating they must be updated before release, or temporarily hide/disable these menu items until proper documents exist.
 
-Check Logcat for these messages:
-
-✅ **Action Tracking:**
-```
-MonetizationManager: Initialized: actionCount=0, nextThreshold=9
-MonetizationManager: Action tracked: 1/9
-MonetizationManager: Action tracked: 2/9
-```
-
-✅ **Ad Trigger:**
-```
-MonetizationManager: Should show ad: 9 >= 9
-MonetizationManager: Next ad URL: https://www.effectivegatecpm.com/...
-WebViewViewModel: 💰 Showing monetization ad
-```
-
-✅ **Ad Display:**
-```
-AdBlockMetrics: 📄 Page started: https://www.effectivegatecpm.com/...
-FastAdBlockEngine: ✅ Allowing monetization domain: www.effectivegatecpm.com
-```
-
-✅ **Counter Reset:**
-```
-MonetizationManager: Reset after ad: new threshold=11
-```
-
-## Troubleshooting
-
-### Still Not Seeing Logs?
-
-1. **Check Logcat filter:**
-   - Make sure you're searching for `MonetizationManager`
-   - Select your app package: `com.entertainmentbrowser`
-
-2. **Rebuild the app:**
-   - Click **Build → Clean Project**
-   - Click **Build → Rebuild Project**
-   - Click the green Play button again
-
-3. **Check initialization:**
-   - Look for: `MonetizationManager: Initialized`
-   - If missing, the manager didn't start
-
-### Seeing Logs But No Ad?
-
-1. **Check threshold:**
-   - Look for: `Should show ad: X >= Y`
-   - Make sure X reaches Y
-
-2. **Check ad URL:**
-   - Look for: `Next ad URL: https://...`
-   - Should be your effectivegatecpm.com or otieu.com URL
-
-3. **Check tab creation:**
-   - Look for: `Showing monetization ad`
-   - If missing, tab creation failed
-
-### Ad Opens But Gets Blocked?
-
-1. **Check whitelist:**
-   - Look for: `Allowing monetization domain`
-   - Should see this for your ad domains
-
-2. **If blocked:**
-   - Check `FastAdBlockEngine.kt` has your domains whitelisted
-   - Rebuild and try again
-
-## Summary
-
-✅ **Fixed:** Action tracking now works when clicking websites from home screen
-✅ **Fixed:** Monetization ads don't increment the counter (prevents infinite loop)
-✅ **Ready:** Just rebuild and test!
-
-## Next Steps
-
-1. **Rebuild:** Click green Play button in Android Studio
-2. **Test:** Click 10 websites from home screen
-3. **Watch:** Logcat should show action tracking
-4. **Verify:** After 7-12 clicks, YOUR AD should open
-
-Your monetization should now work perfectly! 💰
+### Referred Files
+- c:\Users\w\Desktop\AndroidStudioProjects\Bro2\app\src\main\java\com\entertainmentbrowser\presentation\settings\SettingsScreen.kt
+---

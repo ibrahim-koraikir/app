@@ -8,18 +8,19 @@
     
     <!-- Storage permissions for downloads (API level dependent)
          - WRITE_EXTERNAL_STORAGE: Required for Android 6-9 (API 23-28) to write to Downloads
-         - READ_EXTERNAL_STORAGE: Required for Android 9 and below (maxSdkVersion="32")
-         - READ_MEDIA_VIDEO: Required for Android 13+ to access video files (minSdkVersion="33")
-         - Android 10+ uses scoped storage and doesn't need WRITE_EXTERNAL_STORAGE -->
+           via DownloadManager.setDestinationInExternalPublicDir()
+         - Android 10+ uses scoped storage/MediaStore and doesn't need storage permissions
+         - READ_EXTERNAL_STORAGE removed: Not needed since we use DownloadManager which handles its own access
+         - READ_MEDIA_VIDEO removed: App doesn't read video files after download, only initiates downloads -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"
-        android:minSdkVersion="33" />
     
-    <!-- Notification permission for download notifications (API 33+) -->
+    <!-- Notification permission for download notifications (API 33+)
+         Requested at runtime in OnboardingViewModel.getNotificationPermission() -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- Permission to install APK updates from browser downloads -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".EntertainmentBrowserApp"
@@ -75,6 +76,17 @@
             </intent-filter>
             -->
         </activity>
+        
+        <!-- FileProvider for sharing downloaded files via content:// URIs -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

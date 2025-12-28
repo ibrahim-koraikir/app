@@ -26,6 +26,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.entertainmentbrowser.util.GpuMemoryManager
 import com.entertainmentbrowser.util.WebViewPool
 import com.entertainmentbrowser.util.WebViewStateManager
+import com.entertainmentbrowser.util.adblock.AntiAdblockBypass
 import com.entertainmentbrowser.util.adblock.FastAdBlockEngine
 import kotlinx.coroutines.launch
 
@@ -47,13 +48,16 @@ fun CustomWebView(
     onUrlChanged: (String) -> Unit = {},
     onNavigationStateChanged: (canGoBack: Boolean, canGoForward: Boolean) -> Unit = { _, _ -> },
     onError: (String) -> Unit = {},
+    onPageLoadError: (PageErrorType, Int) -> Unit = { _, _ -> }, // Enhanced error callback
     onPageFinished: () -> Unit = {},
     onLongPress: (url: String, type: Int) -> Unit = { _, _ -> },
     onScroll: (scrollY: Int, oldScrollY: Int) -> Unit = { _, _ -> },
     onPullOffset: (Float) -> Unit = {},
     onShowDownloadDialog: (url: String, filename: String) -> Unit = { _, _ -> },
+    onVideoPlayingStateChanged: (Boolean) -> Unit = {},
     fastAdBlockEngine: FastAdBlockEngine,
     advancedAdBlockEngine: com.entertainmentbrowser.util.adblock.AdvancedAdBlockEngine,
+    antiAdblockBypass: AntiAdblockBypass? = null,
     webViewStateManager: WebViewStateManager,
     downloadRepository: com.entertainmentbrowser.domain.repository.DownloadRepository,
     strictAdBlockingEnabled: Boolean = false // Strict ad blocking mode from settings
@@ -208,7 +212,8 @@ fun CustomWebView(
             onVideoDetected = onVideoDetected,
             onDrmDetected = onDrmDetected,
             onLongPress = onLongPress,
-            urlValidator = ::isValidAndSafeUrl
+            urlValidator = ::isValidAndSafeUrl,
+            onVideoPlayingStateChanged = onVideoPlayingStateChanged
         )
     }
     
@@ -316,53 +321,109 @@ fun CustomWebView(
                 val hitTestUrl = result.extra
                 
                 android.util.Log.d("CustomWebView", "Long press detected - HitTest type: ${result.type}, URL: $hitTestUrl")
+                android.util.Log.d("CustomWebView", "Touch coordinates: x=$lastTouchX, y=$lastTouchY")
+                
+                // Get WebView scroll position to calculate correct document coordinates
+                val scrollX = scrollX
+                val scrollY = scrollY
+                val scale = scale
+                
+                // Convert touch coordinates to document coordinates
+                // Touch coordinates are relative to WebView, need to account for scroll and scale
+                val docX = (lastTouchX / scale).toInt()
+                val docY = (lastTouchY / scale).toInt()
+                
+                android.util.Log.d("CustomWebView", "Document coordinates: x=$docX, y=$docY (scale=$scale)")
                 
                 // Try to detect if we're on a video or link element using JavaScript
                 evaluateJavascript("""
                     (function() {
-                        var x = ${lastTouchX};
-                        var y = ${lastTouchY};
+                        var x = $docX;
+                        var y = $docY;
+                        
+                        console.log('CustomWebView JS: Looking for element at x=' + x + ', y=' + y);
+                        
                         var element = document.elementFromPoint(x, y);
                         
-                        if (element) {
-                            // Check if it's a video element
-                            if (element.tagName === 'VIDEO') {
-                                return JSON.stringify({type: 'video', url: element.currentSrc || element.src || ''});
+                        console.log('CustomWebView JS: Found element:', element ? element.tagName : 'null');
+                        
+                        if (!element) {
+                            console.log('CustomWebView JS: No element found at coordinates');
+                            return '';
+                        }
+                        
+                        // FIRST: Always check for parent <a> link - this handles images/thumbnails inside links
+                        // This is the most common case for video thumbnails
+                        var linkParent = element.closest('a');
+                        if (linkParent && linkParent.href) {
+                            var href = linkParent.href;
+                            // Make sure it's not just a javascript: or # link
+                            if (href && !href.startsWith('javascript:') && href !== '#' && !href.endsWith('#')) {
+                                console.log('CustomWebView JS: Found parent <a> link:', href);
+                                return JSON.stringify({type: 'link', url: href});
                             }
-                            // Check if it's inside a video element (like poster or controls)
-                            var videoParent = element.closest('video');
-                            if (videoParent) {
-                                return JSON.stringify({type: 'video', url: videoParent.currentSrc || videoParent.src || ''});
+                        }
+                        
+                        // Check if element itself is a link
+                        if (element.tagName === 'A' && element.href) {
+                            var href = element.href;
+                            if (href && !href.startsWith('javascript:') && href !== '#') {
+                                console.log('CustomWebView JS: Found direct link:', href);
+                                return JSON.stringify({type: 'link', url: href});
                             }
-                            // Check if it's a source element inside video
-                            if (element.tagName === 'SOURCE' && element.parentElement && element.parentElement.tagName === 'VIDEO') {
-                                return JSON.stringify({type: 'video', url: element.src || ''});
-                            }
-                            // Check if it's a link - try multiple approaches
-                            var linkParent = element.closest('a');
-                            if (linkParent && linkParent.href) {
-                                return JSON.stringify({type: 'link', url: linkParent.href});
-                            }
-                            // Check if element itself is a link
-                            if (element.tagName === 'A' && element.href) {
-                                return JSON.stringify({type: 'link', url: element.href});
-                            }
-                            // Check for onclick handlers that might contain URLs
-                            if (element.onclick) {
-                                var onclickStr = element.onclick.toString();
-                                var urlMatch = onclickStr.match(/https?:\/\/[^\s'"]+/);
+                        }
+                        
+                        // Check if it's a video element
+                        if (element.tagName === 'VIDEO') {
+                            return JSON.stringify({type: 'video', url: element.currentSrc || element.src || ''});
+                        }
+                        
+                        // Check if it's inside a video element (like poster or controls)
+                        var videoParent = element.closest('video');
+                        if (videoParent) {
+                            return JSON.stringify({type: 'video', url: videoParent.currentSrc || videoParent.src || ''});
+                        }
+                        
+                        // Check if it's a source element inside video
+                        if (element.tagName === 'SOURCE' && element.parentElement && element.parentElement.tagName === 'VIDEO') {
+                            return JSON.stringify({type: 'video', url: element.src || ''});
+                        }
+                        
+                        // Check for onclick handlers that might contain URLs (traverse up to 10 levels)
+                        var currentEl = element;
+                        for (var i = 0; i < 10 && currentEl; i++) {
+                            // Check onclick attribute
+                            var onclick = currentEl.getAttribute && currentEl.getAttribute('onclick');
+                            if (onclick) {
+                                var urlMatch = onclick.match(/https?:\/\/[^\s'")\]]+/);
                                 if (urlMatch) {
+                                    console.log('CustomWebView JS: Found onclick URL:', urlMatch[0]);
                                     return JSON.stringify({type: 'link', url: urlMatch[0]});
                                 }
                             }
+                            
                             // Check data attributes that might contain URLs
-                            if (element.dataset && element.dataset.href) {
-                                return JSON.stringify({type: 'link', url: element.dataset.href});
+                            if (currentEl.dataset) {
+                                var dataUrl = currentEl.dataset.href || currentEl.dataset.url || 
+                                              currentEl.dataset.link || currentEl.dataset.src ||
+                                              currentEl.dataset.videoUrl || currentEl.dataset.pageUrl;
+                                if (dataUrl && dataUrl.startsWith('http')) {
+                                    console.log('CustomWebView JS: Found data attribute URL:', dataUrl);
+                                    return JSON.stringify({type: 'link', url: dataUrl});
+                                }
                             }
-                            if (element.dataset && element.dataset.url) {
-                                return JSON.stringify({type: 'link', url: element.dataset.url});
+                            
+                            // Check for href attribute (some elements use href without being <a>)
+                            var href = currentEl.getAttribute && currentEl.getAttribute('href');
+                            if (href && href.startsWith('http')) {
+                                console.log('CustomWebView JS: Found href attribute:', href);
+                                return JSON.stringify({type: 'link', url: href});
                             }
+                            
+                            currentEl = currentEl.parentElement;
                         }
+                        
+                        console.log('CustomWebView JS: No link found after checking all options');
                         return '';
                     })();
                 """.trimIndent()) { jsonResult ->
@@ -370,36 +431,66 @@ fun CustomWebView(
                         var urlToUse: String? = null
                         var typeToUse = android.webkit.WebView.HitTestResult.UNKNOWN_TYPE
                         
-                        // Try to get URL from JavaScript result first
-                        // Use sanitized JSON parsing with strict validation
+                        val hitTestType = result.type
+                        val isImageType = hitTestType == android.webkit.WebView.HitTestResult.IMAGE_TYPE
+                        val isAnchorType = hitTestType == android.webkit.WebView.HitTestResult.SRC_ANCHOR_TYPE
+                        val isImageAnchorType = hitTestType == android.webkit.WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+                        
+                        android.util.Log.d("CustomWebView", "📋 JS Result: $jsonResult")
+                        android.util.Log.d("CustomWebView", "📋 HitTest URL: $hitTestUrl, Type: $hitTestType (isImage=$isImageType, isAnchor=$isAnchorType, isImageAnchor=$isImageAnchorType)")
+                        
+                        // PRIORITY 1: Try JavaScript result FIRST
+                        // JavaScript can find parent <a> links when user taps on an image/thumbnail
+                        // This is crucial for video thumbnails that are wrapped in links
                         val sanitizedJson = sanitizeJsonResult(jsonResult)
                         if (sanitizedJson != null) {
                             try {
                                 val json = org.json.JSONObject(sanitizedJson)
-                                val url = json.optString("url", "")
+                                val jsUrl = json.optString("url", "")
+                                val jsType = json.optString("type", "")
                                 
-                                if (url.isNotEmpty() && url != "null" && isValidAndSafeUrl(url)) {
-                                    urlToUse = url
-                                    typeToUse = android.webkit.WebView.HitTestResult.SRC_ANCHOR_TYPE
-                                    android.util.Log.d("CustomWebView", "✅ Got URL from JavaScript: $url")
+                                if (jsUrl.isNotEmpty() && jsUrl != "null" && isValidAndSafeUrl(jsUrl)) {
+                                    urlToUse = jsUrl
+                                    typeToUse = if (jsType == "video") {
+                                        android.webkit.WebView.HitTestResult.SRC_ANCHOR_TYPE
+                                    } else {
+                                        android.webkit.WebView.HitTestResult.SRC_ANCHOR_TYPE
+                                    }
+                                    android.util.Log.d("CustomWebView", "✅ Got URL from JavaScript (priority): $jsUrl (type=$jsType)")
                                 }
                             } catch (e: org.json.JSONException) {
-                                // Malformed JSON - log at debug level only to avoid noisy crash reports
-                                android.util.Log.d("CustomWebView", "Malformed JSON from JS, ignoring")
-                                urlToUse = null
+                                android.util.Log.d("CustomWebView", "Malformed JSON from JS, trying HitTest")
                             } catch (e: Exception) {
-                                // Other parsing errors - log at debug level
                                 android.util.Log.d("CustomWebView", "Failed to parse JS result: ${e.javaClass.simpleName}")
-                                urlToUse = null
                             }
                         }
                         
-                        // Fallback to HitTestResult if JavaScript didn't find anything
-                        if (urlToUse == null && hitTestUrl != null && hitTestUrl.isNotEmpty()) {
+                        // PRIORITY 2: Use HitTestResult for SRC_IMAGE_ANCHOR_TYPE
+                        // This means an image inside a link - HitTest gives us the link URL directly
+                        if (urlToUse == null && hitTestUrl != null && hitTestUrl.isNotEmpty() && isImageAnchorType) {
                             if (isValidAndSafeUrl(hitTestUrl)) {
                                 urlToUse = hitTestUrl
-                                typeToUse = result.type
-                                android.util.Log.d("CustomWebView", "✅ Got URL from HitTest: $hitTestUrl")
+                                typeToUse = hitTestType
+                                android.util.Log.d("CustomWebView", "✅ Using HitTest URL (image-anchor): $hitTestUrl")
+                            }
+                        }
+                        
+                        // PRIORITY 3: Use HitTestResult for pure anchor type
+                        if (urlToUse == null && hitTestUrl != null && hitTestUrl.isNotEmpty() && isAnchorType) {
+                            if (isValidAndSafeUrl(hitTestUrl)) {
+                                urlToUse = hitTestUrl
+                                typeToUse = hitTestType
+                                android.util.Log.d("CustomWebView", "✅ Using HitTest URL (anchor): $hitTestUrl")
+                            }
+                        }
+                        
+                        // PRIORITY 4 (LAST RESORT): Use image URL only if nothing else found
+                        // This is for standalone images not wrapped in links
+                        if (urlToUse == null && hitTestUrl != null && hitTestUrl.isNotEmpty() && isImageType) {
+                            if (isValidAndSafeUrl(hitTestUrl)) {
+                                urlToUse = hitTestUrl
+                                typeToUse = hitTestType
+                                android.util.Log.d("CustomWebView", "⚠️ Using HitTest image URL (last resort): $hitTestUrl")
                             }
                         }
                         
@@ -408,7 +499,7 @@ fun CustomWebView(
                             android.util.Log.d("CustomWebView", "📍 Triggering long-press with URL: $urlToUse")
                             onLongPress(urlToUse, typeToUse)
                         } else {
-                            android.util.Log.d("CustomWebView", "No valid URL found for long-press")
+                            android.util.Log.d("CustomWebView", "❌ No valid URL found for long-press")
                         }
                     }
                 }
@@ -416,21 +507,26 @@ fun CustomWebView(
                 true // Consume the event
             }
             
-            // Add scroll listener for auto-hide tab bar
+            // Add scroll listener for auto-hide tab bar with debouncing
+            // Debounce scroll events to improve performance on video-heavy sites (TikTok, Reels, Shorts)
+            var lastScrollTime = 0L
+            val scrollDebounceMs = 50L // Only process scroll events every 50ms
+            
             setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
-                onScroll(scrollY, oldScrollY)
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastScrollTime >= scrollDebounceMs) {
+                    lastScrollTime = currentTime
+                    onScroll(scrollY, oldScrollY)
+                }
             }
             
             // Set AdBlockWebViewClient with ad-blocking and all existing functionality
             // FastAdBlockEngine is injected as singleton - shared across all tabs!
-            
-            // Check if this tab is monetized (AdBlock disabled)
-            val isMonetized = webViewStateManager.isMonetized(tabId)
-            
             webViewClient = AdBlockWebViewClient(
                 context = context,
                 fastEngine = fastAdBlockEngine,
                 advancedEngine = advancedAdBlockEngine,
+                antiAdblockBypass = antiAdblockBypass,
                 onVideoDetected = onVideoDetected,
                 onLoadingChanged = onLoadingChanged,
                 onNavigationStateChanged = onNavigationStateChanged,
@@ -439,7 +535,8 @@ fun CustomWebView(
                     // Call the original onPageFinished
                     onPageFinished()
                 },
-                isAdBlockingEnabled = !isMonetized, // Disable blocking if monetized
+                onPageLoadError = onPageLoadError, // Pass enhanced error callback
+                isAdBlockingEnabled = true, // Ad blocking always enabled
                 strictAdBlockingEnabled = strictAdBlockingEnabled // Pass strict mode setting
             )
             
@@ -555,30 +652,38 @@ fun CustomWebView(
     }
     
     // Load URL when it changes or on first creation
-    // Track the last loaded URL to avoid unnecessary reloads
-    var lastLoadedUrl by remember { mutableStateOf<String?>(null) }
+    // Track the last loaded URL per tab to avoid unnecessary reloads
+    var lastLoadedUrlForTab by remember(tabId) { mutableStateOf<String?>(null) }
     
     LaunchedEffect(url, tabId) {
         // Get the current URL in the WebView
         val currentWebViewUrl = webView.url
         
+        // Check if WebView already has content loaded (not blank/empty)
+        val webViewHasContent = !currentWebViewUrl.isNullOrBlank() && 
+                                currentWebViewUrl != "about:blank"
+        
         // Load URL if:
         // 1. URL is not blank
-        // 2. WebView has no URL yet (fresh tab)
-        // 3. OR URL is different AND WebView is on a blank/null page
+        // 2. This is a NEW tab (lastLoadedUrlForTab is null) AND WebView has no content
+        // 3. OR WebView has no URL yet (fresh/recycled WebView)
+        // 4. OR WebView is on a blank page
+        // Note: When switching tabs, if WebView already has content, preserve it
+        val isNewTab = lastLoadedUrlForTab == null
         val shouldLoad = url.isNotBlank() && (
+            (isNewTab && !webViewHasContent) ||
             currentWebViewUrl.isNullOrBlank() ||
             currentWebViewUrl == "about:blank"
         )
         
         if (shouldLoad) {
-            android.util.Log.d("CustomWebView", "Loading URL for tab $tabId: $url (WebView was: $currentWebViewUrl)")
+            android.util.Log.d("CustomWebView", "Loading URL for tab $tabId: $url (isNewTab=$isNewTab, WebView was: $currentWebViewUrl)")
             webView.loadUrl(url)
-            lastLoadedUrl = url
+            lastLoadedUrlForTab = url
         } else {
             android.util.Log.d("CustomWebView", "Tab $tabId - Preserving WebView state, current URL: $currentWebViewUrl")
-            // Update lastLoadedUrl to match what's in the WebView
-            lastLoadedUrl = currentWebViewUrl
+            // Update lastLoadedUrlForTab to match what's in the WebView
+            lastLoadedUrlForTab = currentWebViewUrl
         }
     }
     

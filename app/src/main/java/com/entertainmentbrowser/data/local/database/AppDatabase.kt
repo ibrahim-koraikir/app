@@ -1,4 +1,4 @@
-﻿package com.entertainmentbrowser.data.local.database
+package com.entertainmentbrowser.data.local.database
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
@@ -21,7 +21,7 @@ import com.entertainmentbrowser.data.local.entity.WebsiteEntity
         DownloadEntity::class,
         BookmarkEntity::class
     ],
-    version = 6,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

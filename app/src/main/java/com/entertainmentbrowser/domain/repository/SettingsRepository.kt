@@ -66,4 +66,9 @@ interface SettingsRepository {
      * Requirements: 12.5
      */
     suspend fun clearDownloadHistory()
+    
+    /**
+     * Update the selected search engine.
+     */
+    suspend fun updateSearchEngine(engineOrdinal: Int)
 }

@@ -2,31 +2,113 @@ package com.entertainmentbrowser.presentation.webview
 
 import android.webkit.WebView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.entertainmentbrowser.core.constants.Constants
+import com.entertainmentbrowser.data.remote.RemoteAdConfig
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+/**
+ * Ad Network Rotator - cycles through available ad networks (supports remote config)
+ */
+object AdNetworkRotator {
+    @Volatile
+    private var currentIndex = 0
+    
+    @Volatile
+    private var networks: List<Constants.AdNetwork> = Constants.AD_NETWORKS
+    
+    /**
+     * Initialize with remote config - call this on app start
+     */
+    fun initialize(context: android.content.Context) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val remoteNetworks = RemoteAdConfig.getAdNetworks(context)
+                if (remoteNetworks.isNotEmpty()) {
+                    networks = remoteNetworks
+                    android.util.Log.d("AdNetworkRotator", "✅ Loaded ${networks.size} networks from remote config")
+                    networks.forEach { 
+                        android.util.Log.d("AdNetworkRotator", "  📢 ${it.name}: ${it.url}")
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("AdNetworkRotator", "❌ Failed to load remote config, using hardcoded", e)
+            }
+        }
+    }
+    
+    /**
+     * Force refresh from remote
+     */
+    fun refresh(context: android.content.Context) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                if (RemoteAdConfig.refreshConfig(context)) {
+                    networks = RemoteAdConfig.getAdNetworks(context)
+                    android.util.Log.d("AdNetworkRotator", "🔄 Refreshed: ${networks.size} networks")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("AdNetworkRotator", "❌ Refresh failed", e)
+            }
+        }
+    }
+    
+    fun getNextAdNetwork(): Constants.AdNetwork {
+        if (networks.isEmpty()) {
+            return Constants.AD_NETWORKS.first()
+        }
+        val network = networks[currentIndex]
+        currentIndex = (currentIndex + 1) % networks.size
+        android.util.Log.d("AdNetworkRotator", "📢 Selected ad network: ${network.name} (index: ${currentIndex - 1})")
+        return network
+    }
+    
+    fun getCurrentNetwork(): Constants.AdNetwork {
+        return if (networks.isNotEmpty()) networks[currentIndex] else Constants.AD_NETWORKS.first()
+    }
+    
+    fun getNetworkCount(): Int = networks.size
+    
+    fun reset() {
+        currentIndex = 0
+    }
+}
 
 /**
  * Singleton to track if ad is preloaded (just a flag, not the WebView itself)
@@ -40,6 +122,10 @@ object InterstitialAdPreloader {
     
     @Volatile
     private var tempWebView: WebView? = null
+    
+    @Volatile
+    var currentAdNetwork: Constants.AdNetwork? = null
+        private set
     
     fun startPreload(context: android.content.Context, onComplete: () -> Unit) {
         android.util.Log.d("InterstitialAd", "🔄 startPreload called - isPreloading: $isPreloading, preloadComplete: $preloadComplete")
@@ -58,21 +144,33 @@ object InterstitialAdPreloader {
         }
         
         isPreloading = true
-        android.util.Log.d("InterstitialAd", "🔄 Starting preload...")
+        
+        // Get next ad network in rotation
+        currentAdNetwork = AdNetworkRotator.getNextAdNetwork()
+        android.util.Log.d("InterstitialAd", "🔄 Starting preload for ${currentAdNetwork?.name}...")
         
         // Create a temporary WebView just to preload/cache the URL
+        // Security: Restricted WebView for ad content only - no file/content access
         try {
             tempWebView = WebView(context.applicationContext).apply {
                 settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
                     cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+                    // Security hardening - restrict file and content access for ad WebViews
+                    allowFileAccess = false
+                    allowContentAccess = false
+                    mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                    // Enable safe browsing on API 26+
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        safeBrowsingEnabled = true
+                    }
                 }
                 
                 webViewClient = object : android.webkit.WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
-                        android.util.Log.d("InterstitialAd", "✅ Ad preloaded/cached successfully")
+                        android.util.Log.d("InterstitialAd", "✅ Ad preloaded/cached successfully for ${currentAdNetwork?.name}")
                         preloadComplete = true
                         isPreloading = false
                         onComplete()
@@ -92,7 +190,7 @@ object InterstitialAdPreloader {
                         super.onReceivedError(view, request, error)
                         // Still mark as complete so we don't block forever
                         if (request?.isForMainFrame == true) {
-                            android.util.Log.e("InterstitialAd", "❌ Preload failed, but marking complete")
+                            android.util.Log.e("InterstitialAd", "❌ Preload failed for ${currentAdNetwork?.name}, but marking complete")
                             preloadComplete = true
                             isPreloading = false
                             onComplete()
@@ -101,8 +199,9 @@ object InterstitialAdPreloader {
                     }
                 }
                 
-                android.util.Log.d("InterstitialAd", "📡 Loading ad URL: ${Constants.ADSTERRA_DIRECT_LINK}")
-                loadUrl(Constants.ADSTERRA_DIRECT_LINK)
+                val adUrl = currentAdNetwork?.url ?: Constants.ADSTERRA_DIRECT_LINK
+                android.util.Log.d("InterstitialAd", "📡 Loading ad URL: $adUrl (${currentAdNetwork?.name})")
+                loadUrl(adUrl)
             }
         } catch (e: Exception) {
             android.util.Log.e("InterstitialAd", "❌ Failed to create preload WebView", e)
@@ -119,6 +218,7 @@ object InterstitialAdPreloader {
         android.util.Log.d("InterstitialAd", "🔄 Resetting preloader state")
         preloadComplete = false
         isPreloading = false
+        currentAdNetwork = null
         tempWebView?.let {
             try {
                 it.stopLoading()
@@ -132,19 +232,37 @@ object InterstitialAdPreloader {
 }
 
 /**
+ * Skip button state: Countdown -> Skip >> -> X close
+ */
+private enum class SkipState {
+    COUNTDOWN,  // Shows "Skip in 5s", "Skip in 4s", etc.
+    SKIP_READY, // Shows "Skip >>"
+    CLOSE_READY // Shows "X" button
+}
+
+/**
  * Full-screen interstitial ad dialog
- * Shows Adsterra smartlink with countdown timer before allowing close
+ * Shows ads from rotating ad networks with skip flow:
+ * 1. "Skip in 5s" countdown
+ * 2. "Skip >>" button appears
+ * 3. User taps >> to reveal X close button
  */
 @Composable
 fun InterstitialAdDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    var secondsRemaining by remember { mutableStateOf(5) }
+    var secondsRemaining by remember { mutableIntStateOf(5) }
+    var skipState by remember { mutableStateOf(SkipState.COUNTDOWN) }
     var isLoading by remember { mutableStateOf(true) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     
-    android.util.Log.d("InterstitialAd", "🎬 InterstitialAdDialog composing...")
+    // Get the current ad network (use preloaded one or get next)
+    val currentAdNetwork = remember {
+        InterstitialAdPreloader.currentAdNetwork ?: AdNetworkRotator.getNextAdNetwork()
+    }
+    
+    android.util.Log.d("InterstitialAd", "🎬 InterstitialAdDialog composing with ${currentAdNetwork.name}...")
     
     // Countdown timer - starts after ad loads
     LaunchedEffect(isLoading) {
@@ -153,6 +271,8 @@ fun InterstitialAdDialog(
                 delay(1000)
                 secondsRemaining--
             }
+            // Countdown finished, show Skip >> button
+            skipState = SkipState.SKIP_READY
         }
     }
     
@@ -169,12 +289,12 @@ fun InterstitialAdDialog(
     
     Dialog(
         onDismissRequest = { 
-            if (secondsRemaining == 0) {
+            if (skipState == SkipState.CLOSE_READY) {
                 onDismiss()
             }
         },
         properties = DialogProperties(
-            dismissOnBackPress = secondsRemaining == 0,
+            dismissOnBackPress = skipState == SkipState.CLOSE_READY,
             dismissOnClickOutside = false,
             usePlatformDefaultWidth = false
         )
@@ -184,7 +304,23 @@ fun InterstitialAdDialog(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            // Network name banner at top (no background)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = currentAdNetwork.name,
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            
             // WebView for ad - loads fresh but should be cached from preload
+            // Security: Restricted WebView for ad content only - no file/content access
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
@@ -193,12 +329,20 @@ fun InterstitialAdDialog(
                             domStorageEnabled = true
                             cacheMode = android.webkit.WebSettings.LOAD_DEFAULT // Use cache
                             setSupportMultipleWindows(false)
+                            // Security hardening - restrict file and content access for ad WebViews
+                            allowFileAccess = false
+                            allowContentAccess = false
+                            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                            // Enable safe browsing on API 26+
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                safeBrowsingEnabled = true
+                            }
                         }
                         
                         webViewClient = object : android.webkit.WebViewClient() {
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
-                                android.util.Log.d("InterstitialAd", "📄 Dialog ad loaded")
+                                android.util.Log.d("InterstitialAd", "📄 Dialog ad loaded from ${currentAdNetwork.name}")
                                 isLoading = false
                             }
                             
@@ -247,16 +391,19 @@ fun InterstitialAdDialog(
                         
                         webChromeClient = android.webkit.WebChromeClient()
                         
-                        // Load the ad URL (should be cached from preload)
-                        loadUrl(Constants.ADSTERRA_DIRECT_LINK)
+                        // Load the ad URL from current network
+                        android.util.Log.d("InterstitialAd", "📡 Loading ad from ${currentAdNetwork.name}: ${currentAdNetwork.url}")
+                        loadUrl(currentAdNetwork.url)
                         
                         webViewRef = this
                     }
                 },
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 40.dp) // Leave space for network name banner
             )
             
-            // Loading indicator
+            // Loading indicator with network name
             if (isLoading) {
                 Box(
                     modifier = Modifier
@@ -264,43 +411,78 @@ fun InterstitialAdDialog(
                         .background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Loading ${currentAdNetwork.name}...",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(top = 16.dp)
+                        )
+                    }
                 }
             }
             
-            // Bottom controls
-            Column(
+            // Top-right skip/close button with 3 states
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                when {
-                    isLoading -> {
-                        Text(
-                            text = "Loading ad...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    secondsRemaining > 0 -> {
-                        Text(
-                            text = "Close in $secondsRemaining seconds...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    else -> {
-                        Button(
-                            onClick = onDismiss,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Close")
+                    .align(Alignment.TopEnd)
+                    .padding(top = 48.dp, end = 16.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(
+                        when (skipState) {
+                            SkipState.COUNTDOWN -> Color.Gray.copy(alpha = 0.7f)
+                            SkipState.SKIP_READY -> Color(0xFF1976D2).copy(alpha = 0.9f) // Blue for skip
+                            SkipState.CLOSE_READY -> Color.Black.copy(alpha = 0.8f)
                         }
+                    )
+                    .clickable(enabled = skipState != SkipState.COUNTDOWN) {
+                        when (skipState) {
+                            SkipState.SKIP_READY -> {
+                                // Tap >> to reveal X button
+                                skipState = SkipState.CLOSE_READY
+                            }
+                            SkipState.CLOSE_READY -> {
+                                // Tap X to close
+                                onDismiss()
+                            }
+                            else -> { /* Do nothing during countdown */ }
+                        }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                when (skipState) {
+                    SkipState.COUNTDOWN -> {
+                        // Show "Skip in Xs" countdown
+                        Text(
+                            text = "Skip in ${secondsRemaining}s",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    SkipState.SKIP_READY -> {
+                        // Show "Skip >>" button
+                        Text(
+                            text = "Skip >>",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    SkipState.CLOSE_READY -> {
+                        // Show X icon to close
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close ad",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }

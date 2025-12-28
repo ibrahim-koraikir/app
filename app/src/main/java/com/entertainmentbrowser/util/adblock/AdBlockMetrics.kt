@@ -95,6 +95,30 @@ object AdBlockMetrics {
         }
     }
     
+    // Main-frame specific metrics
+    private var mainFrameBlockedCount = 0
+    private var mainFrameAllowlistedCount = 0
+    
+    /**
+     * Called when a main-frame ad request is blocked
+     * This tracks direct ad URLs that were blocked at the main-frame level
+     */
+    fun onMainFrameBlocked(url: String, engine: String) {
+        mainFrameBlockedCount++
+        currentPageBlockedCount++
+        Log.i(TAG, "🚫 Main-frame BLOCKED by $engine: ${LogUtils.redactUrl(url)}")
+    }
+    
+    /**
+     * Called when a main-frame request matched ad rules but was allowlisted
+     * This tracks cases where we allowed navigation to critical domains despite ad match
+     */
+    fun onMainFrameAllowlisted(url: String, engine: String) {
+        mainFrameAllowlistedCount++
+        currentPageAllowedCount++
+        Log.i(TAG, "✅ Main-frame ALLOWLISTED (matched $engine but domain is critical): ${LogUtils.redactUrl(url)}")
+    }
+    
     /**
      * Log session summary
      */
@@ -111,6 +135,8 @@ object AdBlockMetrics {
         Log.i(TAG, "Total allowed: $totalAllowedRequests requests")
         Log.i(TAG, "Overall blocking rate: ${calculateBlockingRate(totalBlockedRequests, totalAllowedRequests)}%")
         Log.i(TAG, "Avg blocked per page: ${if (pageLoadCount > 0) totalBlockedRequests / pageLoadCount else 0}")
+        Log.i(TAG, "Main-frame ads blocked: $mainFrameBlockedCount")
+        Log.i(TAG, "Main-frame allowlisted: $mainFrameAllowlistedCount")
         Log.i(TAG, "========================================")
     }
     
@@ -126,6 +152,8 @@ object AdBlockMetrics {
         currentPageStartTime = 0L
         currentPageBlockedCount = 0
         currentPageAllowedCount = 0
+        mainFrameBlockedCount = 0
+        mainFrameAllowlistedCount = 0
         
         Log.d(TAG, "📊 Metrics reset")
     }

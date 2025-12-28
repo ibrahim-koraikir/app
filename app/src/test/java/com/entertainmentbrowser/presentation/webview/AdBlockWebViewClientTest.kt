@@ -1,32 +1,40 @@
 package com.entertainmentbrowser.presentation.webview
 
+import android.content.Context
+import com.entertainmentbrowser.util.adblock.AdvancedAdBlockEngine
+import com.entertainmentbrowser.util.adblock.AntiAdblockBypass
 import com.entertainmentbrowser.util.adblock.FastAdBlockEngine
 import io.mockk.mockk
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 
 /**
  * Unit tests for AdBlockWebViewClient.
- * Tests basic initialization and blocked count tracking.
+ * Tests basic initialization.
  * Note: Full integration tests with WebView should be done as instrumented tests.
  */
 class AdBlockWebViewClientTest {
     
     private lateinit var client: AdBlockWebViewClient
-    private lateinit var engine: FastAdBlockEngine
+    private lateinit var context: Context
+    private lateinit var fastEngine: FastAdBlockEngine
+    private lateinit var advancedEngine: AdvancedAdBlockEngine
+    private lateinit var antiAdblockBypass: AntiAdblockBypass
     
     @Before
     fun setup() {
-        engine = mockk(relaxed = true)
-        // Create client with default callbacks
-        client = AdBlockWebViewClient(engine)
-    }
-    
-    @Test
-    fun `client initializes with zero blocked count`() {
-        assertEquals("Initial blocked count should be 0", 0, client.getBlockedCount())
+        context = mockk(relaxed = true)
+        fastEngine = mockk(relaxed = true)
+        advancedEngine = mockk(relaxed = true)
+        antiAdblockBypass = mockk(relaxed = true)
+        // Create client with mocked dependencies
+        client = AdBlockWebViewClient(
+            context = context,
+            fastEngine = fastEngine,
+            advancedEngine = advancedEngine,
+            antiAdblockBypass = antiAdblockBypass
+        )
     }
     
     @Test
@@ -45,7 +53,10 @@ class AdBlockWebViewClientTest {
         var pageFinished = false
         
         val customClient = AdBlockWebViewClient(
-            engine,
+            context = context,
+            fastEngine = fastEngine,
+            advancedEngine = advancedEngine,
+            antiAdblockBypass = antiAdblockBypass,
             onVideoDetected = { videoDetected = true },
             onDrmDetected = { drmDetected = true },
             onLoadingChanged = { loadingChanged = true },
@@ -56,12 +67,43 @@ class AdBlockWebViewClientTest {
         )
         
         assertNotNull("Client with custom callbacks should be created", customClient)
-        assertEquals("Custom client should have zero blocked count", 0, customClient.getBlockedCount())
     }
     
     @Test
-    fun `getBlockedCount returns integer value`() {
-        val count = client.getBlockedCount()
-        assertEquals("Blocked count should be an integer", 0, count)
+    fun `client can be created with ad blocking disabled`() {
+        val clientWithAdBlockDisabled = AdBlockWebViewClient(
+            context = context,
+            fastEngine = fastEngine,
+            advancedEngine = advancedEngine,
+            antiAdblockBypass = antiAdblockBypass,
+            isAdBlockingEnabled = false
+        )
+        
+        assertNotNull("Client with ad blocking disabled should be created", clientWithAdBlockDisabled)
+    }
+    
+    @Test
+    fun `client can be created with strict ad blocking enabled`() {
+        val clientWithStrictMode = AdBlockWebViewClient(
+            context = context,
+            fastEngine = fastEngine,
+            advancedEngine = advancedEngine,
+            antiAdblockBypass = antiAdblockBypass,
+            strictAdBlockingEnabled = true
+        )
+        
+        assertNotNull("Client with strict mode should be created", clientWithStrictMode)
+    }
+    
+    @Test
+    fun `client can be created without antiAdblockBypass`() {
+        val clientWithoutBypass = AdBlockWebViewClient(
+            context = context,
+            fastEngine = fastEngine,
+            advancedEngine = advancedEngine,
+            antiAdblockBypass = null
+        )
+        
+        assertNotNull("Client without antiAdblockBypass should be created", clientWithoutBypass)
     }
 }

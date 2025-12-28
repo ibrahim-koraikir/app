@@ -3,10 +3,13 @@ package com.entertainmentbrowser.presentation.home
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import com.entertainmentbrowser.domain.model.Category
 import com.entertainmentbrowser.domain.model.Website
+import com.entertainmentbrowser.domain.repository.SettingsRepository
+import com.entertainmentbrowser.domain.repository.TabRepository
 import com.entertainmentbrowser.domain.usecase.GetAllWebsitesUseCase
 import com.entertainmentbrowser.domain.usecase.GetWebsitesByCategoryUseCase
 import com.entertainmentbrowser.domain.usecase.SearchWebsitesUseCase
 import com.entertainmentbrowser.domain.usecase.ToggleFavoriteUseCase
+import com.entertainmentbrowser.util.TutorialTipsManager
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -40,6 +43,9 @@ class HomeViewModelTest {
     private lateinit var getAllWebsitesUseCase: GetAllWebsitesUseCase
     private lateinit var searchWebsitesUseCase: SearchWebsitesUseCase
     private lateinit var toggleFavoriteUseCase: ToggleFavoriteUseCase
+    private lateinit var settingsRepository: SettingsRepository
+    private lateinit var tabRepository: TabRepository
+    private lateinit var tutorialTipsManager: TutorialTipsManager
     private lateinit var viewModel: HomeViewModel
     
     private val testWebsites = listOf(
@@ -75,14 +81,22 @@ class HomeViewModelTest {
         getAllWebsitesUseCase = mockk()
         searchWebsitesUseCase = mockk()
         toggleFavoriteUseCase = mockk()
+        settingsRepository = mockk(relaxed = true)
+        tabRepository = mockk(relaxed = true)
+        tutorialTipsManager = mockk(relaxed = true)
         
         every { getAllWebsitesUseCase() } returns flowOf(testWebsites)
+        every { tutorialTipsManager.shouldShowEdgeSwipeTip() } returns flowOf(false)
+        every { tutorialTipsManager.shouldShowLongPressTip() } returns flowOf(false)
         
         viewModel = HomeViewModel(
             getWebsitesByCategoryUseCase,
             getAllWebsitesUseCase,
             searchWebsitesUseCase,
-            toggleFavoriteUseCase
+            toggleFavoriteUseCase,
+            settingsRepository,
+            tabRepository,
+            tutorialTipsManager
         )
     }
     

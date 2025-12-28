@@ -1,6 +1,7 @@
 package com.entertainmentbrowser.presentation.settings
 
 import com.entertainmentbrowser.data.local.datastore.AppSettings
+import com.entertainmentbrowser.util.adblock.AdBlockStatus
 
 /**
  * UI state for the Settings screen.
@@ -13,6 +14,11 @@ data class SettingsUiState(
     val error: String? = null,
     val showClearCacheDialog: Boolean = false,
     val showClearHistoryDialog: Boolean = false,
+    val showClearBrowsingDataDialog: Boolean = false,
     val cacheCleared: Boolean = false,
-    val historyCleared: Boolean = false
+    val historyCleared: Boolean = false,
+    val browsingDataCleared: Boolean = false,
+    // Ad-blocking status
+    val adBlockStatus: AdBlockStatus.Status = AdBlockStatus.Status(),
+    val filtersRefreshed: Boolean = false
 )

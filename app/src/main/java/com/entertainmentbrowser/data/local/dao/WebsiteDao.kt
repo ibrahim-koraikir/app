@@ -34,4 +34,7 @@ interface WebsiteDao {
     
     @Query("SELECT COUNT(*) FROM websites")
     suspend fun getCount(): Int
+    
+    @Query("SELECT id FROM websites")
+    suspend fun getAllIds(): List<Int>
 }

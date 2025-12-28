@@ -12,7 +12,8 @@ class WebViewJsBridge(
     private val onVideoDetected: (String) -> Unit,
     private val onDrmDetected: () -> Unit,
     private val onLongPress: (String, Int) -> Unit,
-    private val urlValidator: (String) -> Boolean
+    private val urlValidator: (String) -> Boolean,
+    private val onVideoPlayingStateChanged: (Boolean) -> Unit = {}
 ) {
     
     /**
@@ -70,6 +71,19 @@ class WebViewJsBridge(
             onLongPress(videoUrl, android.webkit.WebView.HitTestResult.SRC_ANCHOR_TYPE)
         } catch (e: Exception) {
             android.util.Log.e("WebViewJsBridge", "Error in onVideoElementLongPress", e)
+        }
+    }
+    
+    /**
+     * Called from JavaScript when video playing state changes.
+     */
+    @JavascriptInterface
+    fun onVideoPlayingStateChanged(isPlaying: Boolean) {
+        try {
+            android.util.Log.d("WebViewJsBridge", "Video playing state changed: $isPlaying")
+            onVideoPlayingStateChanged(isPlaying)
+        } catch (e: Exception) {
+            android.util.Log.e("WebViewJsBridge", "Error in onVideoPlayingStateChanged", e)
         }
     }
 }

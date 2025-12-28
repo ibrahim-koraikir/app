@@ -14,4 +14,5 @@ object SettingsKeys {
     val HAPTIC_FEEDBACK_ENABLED = booleanPreferencesKey("haptic_feedback_enabled")
     val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
     val STRICT_AD_BLOCKING_ENABLED = booleanPreferencesKey("strict_ad_blocking_enabled")
+    val SEARCH_ENGINE = intPreferencesKey("search_engine")
 }

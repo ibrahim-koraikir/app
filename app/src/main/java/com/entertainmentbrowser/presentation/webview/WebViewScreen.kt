@@ -41,7 +41,36 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.zIndex
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -74,6 +103,7 @@ fun WebViewScreen(
     settingsViewModel: com.entertainmentbrowser.presentation.settings.SettingsViewModel = hiltViewModel(),
     fastAdBlockEngine: com.entertainmentbrowser.util.adblock.FastAdBlockEngine,
     advancedAdBlockEngine: com.entertainmentbrowser.util.adblock.AdvancedAdBlockEngine,
+    antiAdblockBypass: com.entertainmentbrowser.util.adblock.AntiAdblockBypass? = null,
     webViewStateManager: com.entertainmentbrowser.util.WebViewStateManager,
     downloadRepository: com.entertainmentbrowser.domain.repository.DownloadRepository
 ) {
@@ -85,6 +115,23 @@ fun WebViewScreen(
     val hapticFeedback = com.entertainmentbrowser.util.rememberHapticFeedback()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val topToastMessage by viewModel.topToastMessage.collectAsState()
+    
+    // Top toast visibility state
+    var showTopToast by remember { mutableStateOf(false) }
+    var topToastText by remember { mutableStateOf("") }
+    
+    // Handle top toast message display with auto-dismiss
+    LaunchedEffect(topToastMessage) {
+        topToastMessage?.let { message ->
+            topToastText = message
+            showTopToast = true
+            kotlinx.coroutines.delay(2500) // Show for 2.5 seconds
+            showTopToast = false
+            kotlinx.coroutines.delay(300) // Wait for animation to complete
+            viewModel.clearTopToast()
+        }
+    }
     
     // Keep reference to WebView for navigation controls
     var webViewRef by remember { mutableStateOf<android.webkit.WebView?>(null) }
@@ -109,19 +156,33 @@ fun WebViewScreen(
     
     // Pull-to-refresh state
     var pullOffset by remember { mutableStateOf(0f) }
+    var lastPullOffset by remember { mutableStateOf(0f) } // Track last value to avoid jitter recompositions
     var isRefreshing by remember { mutableStateOf(false) }
     val refreshThreshold = 150f // Pull distance needed to trigger refresh
+    val pullOffsetEpsilon = 5f // Minimum change to trigger recomposition
     
     // Handle pull-to-refresh trigger
     LaunchedEffect(pullOffset) {
         if (pullOffset >= refreshThreshold && !isRefreshing && isAtTop) {
             isRefreshing = true
             webViewRef?.reload()
-            // Reset after reload starts
-            kotlinx.coroutines.delay(800)
+        }
+    }
+    
+    // Reset refresh state when page finishes loading or tab changes
+    LaunchedEffect(uiState.isLoading, currentTabId) {
+        if (!uiState.isLoading && isRefreshing) {
+            // Small delay to ensure smooth transition
+            kotlinx.coroutines.delay(300)
             isRefreshing = false
             pullOffset = 0f
         }
+    }
+    
+    // Reset refresh state when switching tabs
+    LaunchedEffect(currentTabId) {
+        isRefreshing = false
+        pullOffset = 0f
     }
     
     // Handle system back button - go back in WebView history if possible
@@ -157,14 +218,35 @@ fun WebViewScreen(
         )
     }
     
+    // Pulsing animation for download FAB
+    val infiniteTransition = rememberInfiniteTransition(label = "downloadFabPulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+    
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         floatingActionButton = {
-            // Show download FAB when video is detected
-            if (uiState.videoDetected && !uiState.drmDetected) {
+            // Show download FAB when video is playing OR when video URL is detected
+            // Use isVideoPlaying for standard video elements, videoDetected for URL-based detection
+            val showDownloadFab = (uiState.isVideoPlaying || uiState.videoDetected) && !uiState.drmDetected
+            
+            AnimatedVisibility(
+                visible = showDownloadFab,
+                enter = scaleIn() + fadeIn(),
+                exit = scaleOut() + fadeOut()
+            ) {
                 FloatingActionButton(
                     onClick = { showDownloadDialog = true },
-                    modifier = Modifier.padding(bottom = 80.dp),
+                    modifier = Modifier
+                        .padding(bottom = 80.dp)
+                        .scale(if (uiState.isVideoPlaying) pulseScale else 1f), // Pulse only when playing
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {
@@ -176,7 +258,23 @@ fun WebViewScreen(
             }
         },
         snackbarHost = {
-            SnackbarHost(hostState = snackbarHostState)
+            // Show snackbar at the TOP instead of bottom
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier.padding(top = 16.dp)
+                ) { snackbarData ->
+                    Snackbar(
+                        snackbarData = snackbarData,
+                        containerColor = MaterialTheme.colorScheme.inverseSurface,
+                        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            }
         }
     ) { paddingValues ->
         Box(
@@ -196,6 +294,41 @@ fun WebViewScreen(
                     color = MaterialTheme.colorScheme.primary,
                     trackColor = Color.Transparent
                 )
+            }
+            
+            // Animated Top Toast for background tab notifications
+            AnimatedVisibility(
+                visible = showTopToast,
+                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 16.dp)
+                    .zIndex(20f)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.inverseSurface,
+                    shadowElevation = 8.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.OpenInNew,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.inverseOnSurface,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = topToastText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.inverseOnSurface
+                        )
+                    }
+                }
             }
 
             // WebView - Only render if we have a valid tab ID
@@ -236,6 +369,9 @@ fun WebViewScreen(
                         onError = { error ->
                             viewModel.onEvent(WebViewEvent.Error(error))
                         },
+                        onPageLoadError = { errorType, errorCode ->
+                            viewModel.onEvent(WebViewEvent.PageLoadError(errorType, errorCode))
+                        },
                         onPageFinished = {
                             // Capture thumbnail when page finishes loading
                             webViewRef?.let { webView ->
@@ -253,28 +389,42 @@ fun WebViewScreen(
                             }
                         },
                         onScroll = { scrollY, oldScrollY ->
-                            // Track if at top of page for pull-to-refresh
-                            isAtTop = scrollY == 0
+                            // Track if at top of page for pull-to-refresh (only update if changed)
+                            val newIsAtTop = scrollY == 0
+                            if (newIsAtTop != isAtTop) {
+                                isAtTop = newIsAtTop
+                            }
                             
                             // Auto-hide/show tab bar based on scroll direction
+                            // Only update state if scroll delta exceeds threshold to avoid jitter recompositions
                             val scrollDelta = scrollY - oldScrollY
                             val scrollThreshold = 10 // Minimum scroll distance to trigger hide/show
                             
                             if (kotlin.math.abs(scrollDelta) > scrollThreshold) {
-                                isTabBarVisible = scrollDelta < 0 // Show when scrolling up, hide when scrolling down
+                                val shouldShow = scrollDelta < 0 // Show when scrolling up, hide when scrolling down
+                                if (shouldShow != isTabBarVisible) {
+                                    isTabBarVisible = shouldShow
+                                }
+                                lastScrollY = scrollY
                             }
-                            
-                            lastScrollY = scrollY
                         },
                         onPullOffset = { offset ->
-                            pullOffset = offset
+                            // Only update pullOffset if change exceeds epsilon to avoid jitter recompositions
+                            if (kotlin.math.abs(offset - lastPullOffset) > pullOffsetEpsilon || offset == 0f) {
+                                pullOffset = offset
+                                lastPullOffset = offset
+                            }
                         },
                         onShowDownloadDialog = { url, filename ->
                             viewModel.onEvent(WebViewEvent.VideoDetected(url))
                             showDownloadDialog = true
                         },
+                        onVideoPlayingStateChanged = { isPlaying ->
+                            viewModel.onEvent(WebViewEvent.VideoPlayingStateChanged(isPlaying))
+                        },
                         fastAdBlockEngine = fastAdBlockEngine,
                         advancedAdBlockEngine = advancedAdBlockEngine,
+                        antiAdblockBypass = antiAdblockBypass,
                         webViewStateManager = webViewStateManager,
                         downloadRepository = downloadRepository
                     )
@@ -295,6 +445,19 @@ fun WebViewScreen(
                         }
                     }
                     */
+                    
+                    // Error overlay for page load failures (blank/black screen fix)
+                    if (uiState.showErrorOverlay && uiState.pageErrorType != PageErrorType.NONE) {
+                        PageErrorOverlay(
+                            errorType = uiState.pageErrorType,
+                            onRetry = {
+                                viewModel.onEvent(WebViewEvent.RetryPageLoad)
+                                webViewRef?.reload()
+                            },
+                            onGoBack = onNavigateBack,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
             }
             
@@ -466,79 +629,219 @@ private fun WebViewContextMenuDialog(
                   type == android.webkit.WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
     val isVideo = url.contains(".mp4") || url.contains(".m3u8") || url.contains("video")
     
-    AlertDialog(
+    // Modern bottom sheet style dialog
+    Dialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = when {
-                    isImage -> "Image Options"
-                    isVideo -> "Video Options"
-                    else -> "Link Options"
-                },
-                style = MaterialTheme.typography.headlineSmall
-            )
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss
+                ),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {} // Prevent dismiss when clicking on content
+                    ),
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                color = Color(0xFF1C1C1E),
+                tonalElevation = 8.dp
             ) {
-                // Show URL (truncated)
-                Text(
-                    text = url.take(50) + if (url.length > 50) "..." else "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-                
-                // Add to Bookmarks
-                TextButton(
-                    onClick = onAddBookmark,
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier.padding(bottom = 24.dp)
                 ) {
-                    Text("Add to Bookmarks")
-                }
-                
-                // Open in new tab
-                TextButton(
-                    onClick = onOpenInNewTab,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Open in new tab")
-                }
-                
-                // Copy link
-                TextButton(
-                    onClick = onCopyLink,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Copy link")
-                }
-                
-                // Share
-                TextButton(
-                    onClick = onShare,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Share")
-                }
-                
-                // Download (for videos/images)
-                if (isVideo || isImage) {
-                    TextButton(
-                        onClick = onDownload,
-                        modifier = Modifier.fillMaxWidth()
+                    // Drag handle
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("Download")
+                        Box(
+                            modifier = Modifier
+                                .width(36.dp)
+                                .height(4.dp)
+                                .background(
+                                    Color.White.copy(alpha = 0.3f),
+                                    RoundedCornerShape(2.dp)
+                                )
+                        )
+                    }
+                    
+                    // Header with icon and title
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Icon based on type
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(
+                                    color = when {
+                                        isVideo -> Color(0xFF34C759).copy(alpha = 0.15f)
+                                        isImage -> Color(0xFF5856D6).copy(alpha = 0.15f)
+                                        else -> Color(0xFF007AFF).copy(alpha = 0.15f)
+                                    },
+                                    shape = RoundedCornerShape(12.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = when {
+                                    isVideo -> Icons.Default.PlayCircle
+                                    isImage -> Icons.Default.Image
+                                    else -> Icons.Default.Link
+                                },
+                                contentDescription = null,
+                                tint = when {
+                                    isVideo -> Color(0xFF34C759)
+                                    isImage -> Color(0xFF5856D6)
+                                    else -> Color(0xFF007AFF)
+                                },
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.width(14.dp))
+                        
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = when {
+                                    isImage -> "Image"
+                                    isVideo -> "Video"
+                                    else -> "Link"
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = url.take(40) + if (url.length > 40) "..." else "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.5f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Divider
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                        color = Color.White.copy(alpha = 0.1f)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Menu items
+                    ContextMenuItem(
+                        icon = Icons.Default.BookmarkAdd,
+                        text = "Add to Bookmarks",
+                        onClick = onAddBookmark
+                    )
+                    
+                    ContextMenuItem(
+                        icon = Icons.Default.OpenInNew,
+                        text = "Open in New Tab",
+                        onClick = onOpenInNewTab
+                    )
+                    
+                    ContextMenuItem(
+                        icon = Icons.Default.ContentCopy,
+                        text = "Copy Link",
+                        onClick = onCopyLink
+                    )
+                    
+                    ContextMenuItem(
+                        icon = Icons.Default.Share,
+                        text = "Share",
+                        onClick = onShare
+                    )
+                    
+                    // Download option for videos/images
+                    if (isVideo || isImage) {
+                        ContextMenuItem(
+                            icon = Icons.Default.Download,
+                            text = if (isVideo) "Download Video" else "Download Image",
+                            onClick = onDownload,
+                            tint = Color(0xFF34C759)
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Cancel button
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF2C2C2E)
+                        ) {
+                            Text(
+                                text = "Cancel",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(onClick = onDismiss)
+                                    .padding(vertical = 14.dp),
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF007AFF)
+                            )
+                        }
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
-        containerColor = Color.Black
-    )
+        }
+    }
+}
+
+@Composable
+private fun ContextMenuItem(
+    icon: ImageVector,
+    text: String,
+    onClick: () -> Unit,
+    tint: Color = Color.White
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = Color.White
+        )
+    }
 }
 
 /**
@@ -616,18 +919,22 @@ private fun WebViewTabBar(
                 )
             }
             
-            // Scrollable tab list
+            // Scrollable tab list with animated items
             androidx.compose.foundation.lazy.LazyRow(
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(tabs.size) { index ->
-                    val tab = tabs[index]
-                    WebViewTabThumbnail(
-                        tab = tab,
-                        onClick = { onTabClick(tab) },
-                        onClose = { onCloseTab(tab.id) }
-                    )
+                items(
+                    count = tabs.size,
+                    key = { index -> tabs.getOrNull(index)?.id ?: index }
+                ) { index ->
+                    tabs.getOrNull(index)?.let { tab ->
+                        WebViewTabThumbnail(
+                            tab = tab,
+                            onClick = { onTabClick(tab) },
+                            onClose = { onCloseTab(tab.id) }
+                        )
+                    }
                 }
             }
         }
@@ -635,7 +942,7 @@ private fun WebViewTabBar(
 }
 
 /**
- * Individual tab thumbnail in the tab bar
+ * Individual tab thumbnail in the tab bar with smooth entrance animation
  */
 @Composable
 private fun WebViewTabThumbnail(
@@ -643,8 +950,33 @@ private fun WebViewTabThumbnail(
     onClick: () -> Unit,
     onClose: () -> Unit
 ) {
+    // Entrance animation - starts from 0 and animates to 1
+    var animationTriggered by remember(tab.id) { mutableStateOf(false) }
+    
+    val animatedScale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (animationTriggered) 1f else 0.3f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+        ),
+        label = "tabScale"
+    )
+    val animatedAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (animationTriggered) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 250),
+        label = "tabAlpha"
+    )
+    
+    // Trigger animation immediately after composition
+    LaunchedEffect(Unit) {
+        animationTriggered = true
+    }
+    
     androidx.compose.foundation.layout.Box(
-        modifier = Modifier.size(48.dp) // Increased size to accommodate shadow
+        modifier = Modifier
+            .size(48.dp) // Increased size to accommodate shadow
+            .scale(animatedScale)
+            .alpha(animatedAlpha)
     ) {
         // Thumbnail with shadow and border for active tab
         androidx.compose.foundation.layout.Box(

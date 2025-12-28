@@ -46,21 +46,23 @@ class WebsiteRepositoryImpl @Inject constructor(
         android.util.Log.d("WebsiteRepo", "Prepopulate: count=$count, total=${websites.size}")
         
         if (count == 0) {
-            // First time - insert all websites
+            // First time - insert all websites in one bulk operation
             websiteDao.insertAll(websites)
             android.util.Log.d("WebsiteRepo", "Inserted all ${websites.size} websites")
         } else {
-            // Check for new websites and add them
-            var added = 0
-            websites.forEach { website ->
-                val existing = websiteDao.getById(website.id)
-                if (existing == null) {
-                    websiteDao.insert(website)
-                    added++
-                    android.util.Log.d("WebsiteRepo", "Added new website: ${website.name} (id=${website.id})")
-                }
+            // Get all existing IDs in a single query (avoids N+1 pattern)
+            val existingIds = websiteDao.getAllIds().toSet()
+            
+            // Filter to only new websites in memory
+            val newWebsites = websites.filter { it.id !in existingIds }
+            
+            if (newWebsites.isNotEmpty()) {
+                // Insert all new websites in one bulk operation
+                websiteDao.insertAll(newWebsites)
+                android.util.Log.d("WebsiteRepo", "Added ${newWebsites.size} new websites")
+            } else {
+                android.util.Log.d("WebsiteRepo", "No new websites to add")
             }
-            android.util.Log.d("WebsiteRepo", "Added $added new websites")
         }
     }
     

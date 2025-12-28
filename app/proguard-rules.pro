@@ -9,9 +9,14 @@
 # Optimization Settings
 # ================================
 # Enable aggressive optimization with 5 passes
+# Note: R8 (default since AGP 3.4) handles most optimizations automatically
+# These settings are compatible with R8 but some may be ignored
 -optimizationpasses 5
+# Disable problematic optimizations that can break reflection/serialization
 -optimizations !code/simplification/arithmetic,!code/simplification/cast,!field/*,!class/merging/*
+# Allow R8 to modify access modifiers for better optimization
 -allowaccessmodification
+# Repackage all classes to reduce APK size
 -repackageclasses ''
 
 # Keep line numbers for debugging
@@ -21,16 +26,15 @@
 # ================================
 # Remove Debug Logging
 # ================================
-# Remove all android.util.Log calls
+# Remove verbose/debug/info logs but KEEP error and warning logs for crash diagnosis
+# Note: If using Crashlytics or similar, you could also remove Log.e and Log.w
 -assumenosideeffects class android.util.Log {
     public static boolean isLoggable(java.lang.String, int);
     public static int v(...);
     public static int d(...);
     public static int i(...);
-    public static int w(...);
-    public static int e(...);
-    public static int wtf(...);
 }
+# Keeping Log.w, Log.e, and Log.wtf for production diagnostics
 
 # Remove Timber logging (if used)
 -assumenosideeffects class timber.log.Timber* {
@@ -96,9 +100,9 @@
 -keep class okhttp3.** { *; }
 -keep interface okhttp3.** { *; }
 
-# Fetch
--keep class com.tonyofrancis.fetch2.** { *; }
--dontwarn com.tonyofrancis.fetch2.**
+# Fetch - Removed, using Android DownloadManager instead
+# -keep class com.tonyofrancis.fetch2.** { *; }
+# -dontwarn com.tonyofrancis.fetch2.**
 
 # Kotlinx Serialization
 -keepattributes *Annotation*, InnerClasses

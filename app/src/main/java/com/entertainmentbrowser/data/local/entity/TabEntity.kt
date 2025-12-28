@@ -8,7 +8,8 @@ import androidx.room.PrimaryKey
     tableName = "tabs",
     indices = [
         Index(value = ["isActive"]),
-        Index(value = ["timestamp"])
+        Index(value = ["timestamp"]),
+        Index(value = ["lastAccessedAt"])
     ]
 )
 data class TabEntity(
@@ -18,5 +19,7 @@ data class TabEntity(
     val title: String,
     val thumbnailPath: String?,
     val isActive: Boolean,
-    val timestamp: Long
+    val timestamp: Long,
+    /** Last time this tab was accessed/switched to. Used for cleanup decisions. */
+    val lastAccessedAt: Long = timestamp
 )

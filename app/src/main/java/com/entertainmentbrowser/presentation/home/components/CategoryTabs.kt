@@ -64,5 +64,6 @@ private fun getCategoryDisplayName(category: Category): String {
         Category.GAMES -> "Games"
         Category.VIDEO_CALL -> "Video Call"
         Category.ARABIC -> "عربي"
+        Category.TRENDING -> "Trending"
     }
 }

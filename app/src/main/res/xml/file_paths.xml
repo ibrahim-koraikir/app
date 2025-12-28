@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- External files directory for app-specific downloads (API 29+) -->
+    <external-files-path
+        name="downloads"
+        path="Download/" />
+    
+    <!-- External public Downloads directory for legacy API <29 -->
+    <external-path
+        name="external_downloads"
+        path="Download/" />
+    
+    <!-- Cache directory for temporary files -->
+    <cache-path
+        name="cache"
+        path="/" />
+</paths>

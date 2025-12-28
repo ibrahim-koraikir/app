@@ -70,6 +70,11 @@ sealed class WebViewEvent {
     data class VideoDetected(val videoUrl: String) : WebViewEvent()
     
     /**
+     * Video playing state changed
+     */
+    data class VideoPlayingStateChanged(val isPlaying: Boolean) : WebViewEvent()
+    
+    /**
      * DRM content detected on the page
      */
     data object DrmDetected : WebViewEvent()
@@ -78,4 +83,19 @@ sealed class WebViewEvent {
      * Error occurred while loading page
      */
     data class Error(val message: String) : WebViewEvent()
+    
+    /**
+     * Page load error with type classification for better UX
+     */
+    data class PageLoadError(val errorType: PageErrorType, val errorCode: Int = -1) : WebViewEvent()
+    
+    /**
+     * Dismiss the error overlay and retry loading
+     */
+    data object RetryPageLoad : WebViewEvent()
+    
+    /**
+     * Dismiss error overlay without retrying
+     */
+    data object DismissErrorOverlay : WebViewEvent()
 }

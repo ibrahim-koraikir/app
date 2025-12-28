@@ -10,11 +10,32 @@ plugins {
 android {
     namespace = "com.entertainmentbrowser"
     compileSdk = 36
+    
+    signingConfigs {
+        create("release") {
+            // Set these in local.properties:
+            // KEYSTORE_FILE=path/to/your/keystore.jks
+            // KEYSTORE_PASSWORD=your_keystore_password
+            // KEY_ALIAS=your_key_alias
+            // KEY_PASSWORD=your_key_password
+            val keystoreFile = project.findProperty("KEYSTORE_FILE")?.toString()
+            val keystorePassword = project.findProperty("KEYSTORE_PASSWORD")?.toString()
+            val keyAlias = project.findProperty("KEY_ALIAS")?.toString()
+            val keyPassword = project.findProperty("KEY_PASSWORD")?.toString()
+            
+            if (keystoreFile != null && keystorePassword != null && keyAlias != null && keyPassword != null) {
+                storeFile = file(keystoreFile)
+                storePassword = keystorePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.entertainmentbrowser"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
 
@@ -39,6 +60,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Use release signing config if available
+            signingConfig = signingConfigs.findByName("release")?.takeIf { it.storeFile != null }
+                ?: signingConfigs.getByName("debug")
         }
     }
     
@@ -71,6 +95,12 @@ android {
             )
         }
     }
+    
+    testOptions {
+        unitTests.all {
+            it.useJUnitPlatform()
+        }
+    }
 }
 
 dependencies {
@@ -87,6 +117,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.7.6")
     
     // Hilt
     implementation(libs.hilt.android)
@@ -106,8 +137,7 @@ dependencies {
     // Coil
     implementation(libs.coil.compose)
     
-    // Download Manager (using Android's built-in DownloadManager instead of Fetch)
-    // implementation(libs.fetch)
+    // Downloads use Android's built-in DownloadManager (no external library needed)
     
     // DataStore
     implementation(libs.datastore.preferences)
@@ -131,6 +161,9 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
     testImplementation(libs.androidx.arch.core.testing)
+    testImplementation(libs.kotest.runner.junit5)
+    testImplementation(libs.kotest.property)
+    testImplementation(libs.kotest.assertions.core)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.mockk.android)

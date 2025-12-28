@@ -11,5 +11,6 @@ enum class Category {
     SOCIAL_MEDIA,
     GAMES,
     VIDEO_CALL,
-    ARABIC
+    ARABIC,
+    TRENDING
 }

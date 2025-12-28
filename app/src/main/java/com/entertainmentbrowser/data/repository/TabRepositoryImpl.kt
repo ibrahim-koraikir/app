@@ -9,6 +9,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
+/**
+ * Implementation of TabRepository.
+ * 
+ * ## Single Source of Truth
+ * This repository delegates to TabDao for all tab state queries.
+ * The database is the authoritative source - avoid caching tab lists
+ * in memory as they may become stale during rapid operations.
+ */
 class TabRepositoryImpl @Inject constructor(
     private val tabDao: TabDao,
     private val tabManager: TabManager
@@ -24,8 +32,21 @@ class TabRepositoryImpl @Inject constructor(
         return tabDao.getActiveTab().map { it?.toDomain() }
     }
     
+    override suspend fun getTabById(tabId: String): Tab? {
+        return tabDao.getTabById(tabId)?.toDomain()
+    }
+    
+    override suspend fun getAllTabsSnapshot(): List<Tab> {
+        return tabDao.getAllTabsSnapshot().map { it.toDomain() }
+    }
+    
     override suspend fun createTab(url: String, title: String): Tab {
         val tab = tabManager.createTab(url, title)
+        return tab.toDomain()
+    }
+    
+    override suspend fun createTabInBackground(url: String, title: String): Tab {
+        val tab = tabManager.createTabInBackground(url, title)
         return tab.toDomain()
     }
     
@@ -33,8 +54,8 @@ class TabRepositoryImpl @Inject constructor(
         tabManager.switchTab(tabId)
     }
     
-    override suspend fun closeTab(tabId: String) {
-        tabManager.closeTab(tabId)
+    override suspend fun closeTab(tabId: String): String? {
+        return tabManager.closeTab(tabId)
     }
     
     override suspend fun closeAllTabs() {

@@ -32,9 +32,10 @@ class AdvancedAdBlockEngine @Inject constructor(
     companion object {
         private const val TAG = "AdvancedAdBlockEngine"
         
-        // Performance thresholds
-        private const val MAX_REGEX_PATTERNS = 500 // Limit regex for performance
-        private const val MAX_WILDCARD_PATTERNS = 2000
+        // Performance thresholds - OPTIMIZED for speed
+        private const val MAX_REGEX_PATTERNS = 200 // Reduced for faster checks
+        private const val MAX_WILDCARD_PATTERNS = 800 // Reduced for faster checks
+        private const val CACHE_SIZE = 10000 // Larger cache = fewer recalculations
     }
     
     // ============================================================================
@@ -42,9 +43,12 @@ class AdvancedAdBlockEngine @Inject constructor(
     // Thread-safe collections to prevent concurrent modification
     // ============================================================================
     
-    // Simple domain blocking (O(1))
+    // Simple domain blocking (O(1)) - contains ONLY hostnames, no paths
     private val blockedDomains = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val allowedDomains = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    
+    // Path-based blocking (O(n) substring check) - for patterns like /ads/, /banner/
+    private val blockedPaths = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     
     // Pattern-based blocking (O(n) but cached)
     private val wildcardPatterns = java.util.concurrent.CopyOnWriteArrayList<WildcardRule>()
@@ -57,57 +61,11 @@ class AdvancedAdBlockEngine @Inject constructor(
     private val cnameMap = java.util.concurrent.ConcurrentHashMap<String, String>()
     
     // ============================================================================
-    // SMART WHITELIST - Critical domains that must NEVER be blocked
+    // SMART WHITELIST - Critical domains from centralized registry
+    // Only includes domains strictly required for: login, checkout, media playback, platform stability
+    // For site-specific exceptions, use targeted filter rules instead of global whitelist
     // ============================================================================
-    private val criticalWhitelist = hashSetOf(
-        // Payment processors
-        "paypal.com", "stripe.com", "square.com", "braintreepayments.com",
-        "checkout.com", "adyen.com", "worldpay.com", "venmo.com", "klarna.com",
-        "affirm.com", "afterpay.com", "pay.google.com",
-        
-        // Banking & Finance (Major Global)
-        "plaid.com", "yodlee.com", "finicity.com", "chase.com", "bankofamerica.com",
-        "wellsfargo.com", "citi.com", "americanexpress.com", "capitalone.com",
-        "hsbc.com", "barclays.com", "santander.com", "revolut.com", "wise.com",
-        
-        // CDNs (content delivery - blocking breaks sites)
-        "cloudflare.com", "fastly.net", "akamaihd.net", "cloudfront.net",
-        "jsdelivr.net", "unpkg.com", "cdnjs.cloudflare.com", "azureedge.net",
-        "edgecastcdn.net", "limelight.com", "cdn77.com", "bunnycdn.com",
-        
-        // Google Services (critical APIs)
-        "googleapis.com", "gstatic.com", "googleusercontent.com",
-        "firebase.google.com", "firebaseio.com", "firestore.googleapis.com",
-        "accounts.google.com", "oauth2.googleapis.com", "identitytoolkit.googleapis.com",
-        "securetoken.googleapis.com", "play.google.com", "android.com",
-        
-        // reCAPTCHA & Security
-        "recaptcha.net", "google.com/recaptcha", "hcaptcha.com",
-        "funcaptcha.com", "arkoselabs.com", "sentry.io", "datadoghq.com",
-        
-        // Streaming CDNs
-        "netflix.com", "nflxvideo.net", "nflximg.net", "nflxext.com", "nflxso.net",
-        "spotify.com", "scdn.co", "spotifycdn.com", "audio-ak-spotify-com.akamaized.net",
-        "youtube.com", "ytimg.com", "ggpht.com", "googlevideo.com",
-        "twitch.tv", "ttvnw.net", "jtvnw.net", "hls.ttvnw.net",
-        "disneyplus.com", "bamgrid.com", "hulu.com", "primevideo.com",
-        "pv-cdn.net", "aiv-cdn.net",
-        
-        // Social Login
-        "facebook.com/login", "accounts.google.com", "login.live.com",
-        "appleid.apple.com", "twitter.com/oauth", "github.com/login",
-        "linkedin.com/oauth", "discord.com/api/oauth2",
-        
-        // Maps & Location
-        "maps.googleapis.com", "maps.gstatic.com", "mapbox.com", "tile.openstreetmap.org",
-        
-        // Microsoft / Office 365
-        "microsoft.com", "office.com", "live.com", "azure.com", "windows.net",
-        "office365.com", "sharepoint.com", "onenote.com",
-        
-        // Apple Services
-        "apple.com", "icloud.com", "cdn-apple.com", "mzstatic.com"
-    )
+    private val criticalWhitelist = AdBlockDomainRegistry.criticalWhitelist
     
     // ============================================================================
     // RULE CLASSES
@@ -154,60 +112,60 @@ class AdvancedAdBlockEngine @Inject constructor(
     )
     
     /**
-     * Initialize the engine - call from Application.onCreate()
+     * Initialize the engine - call from Application.onCreate() via coroutine scope.
+     * This is a suspend function that uses structured concurrency instead of raw threads.
      */
-    fun preloadFromAssets() {
+    suspend fun preloadFromAssets() {
         if (isInitialized) {
             Log.d(TAG, "Already initialized")
             return
         }
         
-        Thread {
-            try {
-                val startTime = System.currentTimeMillis()
-                Log.d(TAG, "🚀 Loading advanced filter lists...")
-                
-                // Load filter lists
-                val filterFiles = listOf(
-                    "adblock/easylist.txt",
-                    "adblock/easyprivacy.txt",
-                    "adblock/fanboy-annoyance.txt"
-                )
-                
-                filterFiles.forEach { loadFilterFile(it) }
-                
-                // Load first-party ad patterns
-                loadFirstPartyAdPatterns()
-                
-                // Load CNAME uncloaking database
-                loadCnameDatabase()
-                
-                val duration = System.currentTimeMillis() - startTime
-                isInitialized = true
-                
-                Log.d(TAG, "✅ Advanced ad-blocker ready in ${duration}ms (95%+ blocking)")
-                Log.d(TAG, "   Blocked domains: ${blockedDomains.size}")
-                Log.d(TAG, "   Wildcard patterns: ${wildcardPatterns.size} (dropped: ${droppedWildcardRules.get()})")
-                Log.d(TAG, "   Regex patterns: ${regexPatterns.size} (dropped: ${droppedRegexRules.get()})")
-                Log.d(TAG, "   First-party paths: ${firstPartyAdPaths.size}")
-                Log.d(TAG, "   CNAME mappings: ${cnameMap.size}")
-                Log.d(TAG, "   Critical whitelist: ${criticalWhitelist.size} domains")
-                
-                // Warn if significant rules were dropped
-                val totalDropped = droppedWildcardRules.get() + droppedRegexRules.get()
-                if (totalDropped > 0) {
-                    Log.w(TAG, "⚠️ Total rules dropped due to limits: $totalDropped")
-                    if (BuildConfig.DEBUG) {
-                        Log.w(TAG, "   Consider increasing MAX_WILDCARD_PATTERNS or MAX_REGEX_PATTERNS")
-                    }
+        try {
+            val startTime = System.currentTimeMillis()
+            Log.d(TAG, "🚀 Loading advanced filter lists...")
+            
+            // Load filter lists
+            val filterFiles = listOf(
+                "adblock/easylist.txt",
+                "adblock/easyprivacy.txt",
+                "adblock/fanboy-annoyance.txt"
+            )
+            
+            filterFiles.forEach { loadFilterFile(it) }
+            
+            // Load first-party ad patterns
+            loadFirstPartyAdPatterns()
+            
+            // Load CNAME uncloaking database
+            loadCnameDatabase()
+            
+            val duration = System.currentTimeMillis() - startTime
+            isInitialized = true
+            
+            Log.d(TAG, "✅ Advanced ad-blocker ready in ${duration}ms (95%+ blocking)")
+            Log.d(TAG, "   Blocked domains: ${blockedDomains.size}")
+            Log.d(TAG, "   Blocked paths: ${blockedPaths.size}")
+            Log.d(TAG, "   Wildcard patterns: ${wildcardPatterns.size} (dropped: ${droppedWildcardRules.get()})")
+            Log.d(TAG, "   Regex patterns: ${regexPatterns.size} (dropped: ${droppedRegexRules.get()})")
+            Log.d(TAG, "   First-party paths: ${firstPartyAdPaths.size}")
+            Log.d(TAG, "   CNAME mappings: ${cnameMap.size}")
+            Log.d(TAG, "   Critical whitelist: ${criticalWhitelist.size} domains")
+            
+            // Warn if significant rules were dropped
+            val totalDropped = droppedWildcardRules.get() + droppedRegexRules.get()
+            if (totalDropped > 0) {
+                Log.w(TAG, "⚠️ Total rules dropped due to limits: $totalDropped")
+                if (BuildConfig.DEBUG) {
+                    Log.w(TAG, "   Consider increasing MAX_WILDCARD_PATTERNS or MAX_REGEX_PATTERNS")
                 }
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Failed to load", e)
-                isInitialized = false
-                initializationFailed = true
             }
-        }.start()
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to load", e)
+            isInitialized = false
+            initializationFailed = true
+        }
     }
     
     /**
@@ -330,10 +288,10 @@ class AdvancedAdBlockEngine @Inject constructor(
             return
         }
         
-        // Simple path pattern: /ads/
+        // Simple path pattern: /ads/, /banner/, etc.
+        // These are stored separately from domains to avoid false positives
         if (pattern.startsWith("/") || pattern.contains("/")) {
-            // Add as simple blocked pattern
-            blockedDomains.add(pattern)
+            blockedPaths.add(pattern)
         }
     }
     
@@ -510,87 +468,101 @@ class AdvancedAdBlockEngine @Inject constructor(
     
     /**
      * Main blocking check - returns true if URL should be blocked
-     * Optimized with caching and lock-free reads
+     * OPTIMIZED: Fast path for common cases, expensive checks only when needed
      */
     fun shouldBlock(url: String, pageUrl: String? = null): Boolean {
         // Graceful degradation if not initialized yet
-        if (!isInitialized) {
+        if (!isInitialized) return false
+        
+        // FAST PATH: Skip very short URLs or data URLs
+        if (url.length < 10 || url.startsWith("data:") || url.startsWith("blob:")) {
             return false
         }
         
-        // Check cache first (thread-safe)
+        // Check cache first (thread-safe) - MOST IMPORTANT OPTIMIZATION
         val cacheKey = "$url|$pageUrl"
         urlCache[cacheKey]?.let { return it }
         
         try {
             val domain = extractDomain(url) ?: return cacheAndReturn(cacheKey, false)
-            val pageDomain = pageUrl?.let { extractDomain(it) }
             
-            // 1. Check critical whitelist FIRST
-            if (isCriticalDomain(domain, url)) {
+            // FAST PATH: Quick domain whitelist check (O(1))
+            if (criticalWhitelist.contains(domain)) {
                 return cacheAndReturn(cacheKey, false)
             }
             
-            // 2. Check exception rules
+            // FAST PATH: Same domain = allow (first-party resources)
+            val pageDomain = pageUrl?.let { extractDomain(it) }
+            if (pageDomain != null && domain == pageDomain) {
+                return cacheAndReturn(cacheKey, false)
+            }
+            
+            // FAST PATH: Simple domain block check (O(1))
+            if (blockedDomains.contains(domain)) {
+                blockedCount.incrementAndGet()
+                return cacheAndReturn(cacheKey, true)
+            }
+            
+            // Check exception rules
             if (allowedDomains.contains(domain)) {
                 return cacheAndReturn(cacheKey, false)
             }
             
-            // 3. PROTECT FIRST-PARTY RESOURCES (CSS, JS, images from same domain)
-            if (pageDomain != null && isFirstPartyResource(domain, url, pageDomain)) {
-                // But still check for known first-party ad paths
-                if (isFirstPartyAd(domain, url, pageDomain)) {
+            // Check subdomain blocking
+            if (isSubdomainBlocked(domain)) {
+                blockedCount.incrementAndGet()
+                return cacheAndReturn(cacheKey, true)
+            }
+            
+            // Check remote domains (lazy loaded, O(1))
+            if (isRemoteDomainBlocked(domain)) {
+                blockedCount.incrementAndGet()
+                return cacheAndReturn(cacheKey, true)
+            }
+            
+            // Check path-based blocking (O(n) but only for URLs with paths)
+            if (isPathBlocked(url)) {
+                blockedCount.incrementAndGet()
+                return cacheAndReturn(cacheKey, true)
+            }
+            
+            // MEDIUM PATH: Only check patterns if URL looks suspicious
+            val lowerUrl = url.lowercase()
+            val looksLikeAd = lowerUrl.contains("ad") || lowerUrl.contains("track") || 
+                             lowerUrl.contains("pixel") || lowerUrl.contains("click") ||
+                             lowerUrl.contains("banner") || lowerUrl.contains("sponsor")
+            
+            if (looksLikeAd) {
+                // Wildcard patterns (limited to 800 for speed)
+                for (rule in wildcardPatterns) {
+                    try {
+                        if (rule.compiledPattern.matcher(url).find()) {
+                            blockedCount.incrementAndGet()
+                            return cacheAndReturn(cacheKey, true)
+                        }
+                    } catch (e: Exception) { }
+                }
+                
+                // Regex patterns (limited to 200 for speed)
+                for (rule in regexPatterns) {
+                    try {
+                        if (rule.pattern.matcher(url).find()) {
+                            blockedCount.incrementAndGet()
+                            return cacheAndReturn(cacheKey, true)
+                        }
+                    } catch (e: Exception) { }
+                }
+                
+                // Heuristic detection (only for suspicious URLs)
+                if (isHeuristicAdUrl(url, domain, pageDomain)) {
                     blockedCount.incrementAndGet()
                     return cacheAndReturn(cacheKey, true)
-                }
-                return cacheAndReturn(cacheKey, false)
-            }
-            
-            // 4. CNAME uncloaking
-            val realDomain = uncloakCname(domain)
-            if (realDomain != domain && blockedDomains.contains(realDomain)) {
-                blockedCount.incrementAndGet()
-                return cacheAndReturn(cacheKey, true)
-            }
-            
-            // 5. Simple domain check (O(1))
-            if (blockedDomains.contains(domain) || isSubdomainBlocked(domain)) {
-                blockedCount.incrementAndGet()
-                return cacheAndReturn(cacheKey, true)
-            }
-            
-            // 6. Wildcard patterns (O(n) but cached)
-            for (rule in wildcardPatterns) {
-                try {
-                    if (rule.compiledPattern.matcher(url).find()) {
-                        if (matchesOptions(rule.options, domain, pageDomain)) {
-                            blockedCount.incrementAndGet()
-                            return cacheAndReturn(cacheKey, true)
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Skip problematic patterns
-                }
-            }
-            
-            // 7. Regex patterns (O(n) - most expensive, checked last)
-            for (rule in regexPatterns) {
-                try {
-                    if (rule.pattern.matcher(url).find()) {
-                        if (matchesOptions(rule.options, domain, pageDomain)) {
-                            blockedCount.incrementAndGet()
-                            return cacheAndReturn(cacheKey, true)
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Skip problematic patterns
                 }
             }
             
             return cacheAndReturn(cacheKey, false)
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking URL: $url", e)
             return cacheAndReturn(cacheKey, false)
         }
     }
@@ -601,6 +573,67 @@ class AdvancedAdBlockEngine @Inject constructor(
     private fun cacheAndReturn(key: String, result: Boolean): Boolean {
         urlCache[key] = result
         return result
+    }
+    
+    // Lazy-loaded remote domains (updated without app update)
+    private val remoteDomains: Set<String> by lazy {
+        try {
+            filterUpdateManager.getRemoteDomains()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load remote domains", e)
+            emptySet()
+        }
+    }
+    
+    /**
+     * Check if domain is blocked by remote domain list (future-proofing)
+     */
+    private fun isRemoteDomainBlocked(domain: String): Boolean {
+        if (remoteDomains.isEmpty()) return false
+        
+        // Exact match
+        if (remoteDomains.contains(domain)) return true
+        
+        // Subdomain match
+        for (blocked in remoteDomains) {
+            if (domain.endsWith(".$blocked")) return true
+        }
+        
+        return false
+    }
+    
+    // Pre-compiled sets from centralized registry for O(1) lookups
+    private val adDomainKeywords = AdBlockDomainRegistry.adDomainKeywords
+    private val adPathKeywords = AdBlockDomainRegistry.adPathKeywords
+    
+    /**
+     * HEURISTIC AD DETECTION - OPTIMIZED for speed
+     * Only called for URLs that already look suspicious
+     */
+    private fun isHeuristicAdUrl(url: String, domain: String, pageDomain: String?): Boolean {
+        // Skip if same domain as page (first-party)
+        if (pageDomain != null && domain == pageDomain) return false
+        
+        val lowerUrl = url.lowercase()
+        val lowerDomain = domain.lowercase()
+        
+        // 1. Quick domain keyword check
+        for (keyword in adDomainKeywords) {
+            if (lowerDomain.contains(keyword)) return true
+        }
+        
+        // 2. Quick path check
+        for (path in adPathKeywords) {
+            if (lowerUrl.contains(path)) return true
+        }
+        
+        // 3. Redirect URL detection (high confidence)
+        if (lowerUrl.contains("?url=http") || lowerUrl.contains("&url=http") ||
+            lowerUrl.contains("?redirect=http") || lowerUrl.contains("?dest=http")) {
+            return true
+        }
+        
+        return false
     }
     
     /**
@@ -677,6 +710,22 @@ class AdvancedAdBlockEngine @Inject constructor(
         for (i in 1 until parts.size) {
             val parentDomain = parts.subList(i, parts.size).joinToString(".")
             if (blockedDomains.contains(parentDomain)) {
+                return true
+            }
+        }
+        return false
+    }
+    
+    /**
+     * Check if URL path matches any blocked path patterns.
+     * Path patterns are stored separately from domains to avoid false positives.
+     */
+    private fun isPathBlocked(url: String): Boolean {
+        if (blockedPaths.isEmpty()) return false
+        
+        val lowerUrl = url.lowercase()
+        for (path in blockedPaths) {
+            if (lowerUrl.contains(path.lowercase())) {
                 return true
             }
         }
@@ -774,6 +823,7 @@ class AdvancedAdBlockEngine @Inject constructor(
             isInitialized = isInitialized,
             initializationFailed = initializationFailed,
             blockedDomainsCount = blockedDomains.size,
+            blockedPathsCount = blockedPaths.size,
             wildcardPatternsCount = wildcardPatterns.size,
             regexPatternsCount = regexPatterns.size,
             firstPartyPathsCount = firstPartyAdPaths.size,
@@ -792,10 +842,11 @@ class AdvancedAdBlockEngine @Inject constructor(
      */
     fun getRuleStats(): RuleStats {
         val totalDropped = droppedWildcardRules.get() + droppedRegexRules.get()
-        val totalLoaded = blockedDomains.size + wildcardPatterns.size + regexPatterns.size
+        val totalLoaded = blockedDomains.size + blockedPaths.size + wildcardPatterns.size + regexPatterns.size
         
         return RuleStats(
             blockedDomains = blockedDomains.size,
+            blockedPaths = blockedPaths.size,
             wildcardPatternsLoaded = wildcardPatterns.size,
             wildcardPatternsDropped = droppedWildcardRules.get(),
             wildcardPatternsLimit = MAX_WILDCARD_PATTERNS,
@@ -815,6 +866,7 @@ class AdvancedAdBlockEngine @Inject constructor(
         val isInitialized: Boolean,
         val initializationFailed: Boolean,
         val blockedDomainsCount: Int,
+        val blockedPathsCount: Int,
         val wildcardPatternsCount: Int,
         val regexPatternsCount: Int,
         val firstPartyPathsCount: Int,
@@ -832,6 +884,7 @@ class AdvancedAdBlockEngine @Inject constructor(
      */
     data class RuleStats(
         val blockedDomains: Int,
+        val blockedPaths: Int,
         val wildcardPatternsLoaded: Int,
         val wildcardPatternsDropped: Int,
         val wildcardPatternsLimit: Int,

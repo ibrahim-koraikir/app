@@ -32,7 +32,10 @@ class SettingsRepositoryImpl @Inject constructor(
                 maxConcurrentDownloads = preferences[SettingsKeys.MAX_CONCURRENT_DOWNLOADS] ?: 3,
                 hapticFeedbackEnabled = preferences[SettingsKeys.HAPTIC_FEEDBACK_ENABLED] ?: true,
                 onboardingCompleted = preferences[SettingsKeys.ONBOARDING_COMPLETED] ?: false,
-                strictAdBlockingEnabled = preferences[SettingsKeys.STRICT_AD_BLOCKING_ENABLED] ?: false
+                strictAdBlockingEnabled = preferences[SettingsKeys.STRICT_AD_BLOCKING_ENABLED] ?: false,
+                searchEngine = com.entertainmentbrowser.domain.model.SearchEngine.fromOrdinal(
+                    preferences[SettingsKeys.SEARCH_ENGINE] ?: 0
+                )
             )
         }
     }
@@ -88,5 +91,11 @@ class SettingsRepositoryImpl @Inject constructor(
         // This will be implemented when DownloadDao is available
         // For now, this is a placeholder that will be connected to the database
         // in the download management implementation
+    }
+    
+    override suspend fun updateSearchEngine(engineOrdinal: Int) {
+        dataStore.edit { preferences ->
+            preferences[SettingsKeys.SEARCH_ENGINE] = engineOrdinal
+        }
     }
 }

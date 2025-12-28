@@ -15,7 +15,12 @@ data class DownloadEntity(
     val id: Int,
     val url: String,
     val filename: String,
-    val filePath: String?,
+    /** Content URI for scoped storage (API 29+), null for legacy file paths */
+    val contentUri: String? = null,
+    /** Display path for UI purposes (e.g., "Downloads/video.mp4"), not for file access */
+    val displayPath: String? = null,
+    /** @deprecated Use contentUri instead. Kept for legacy API <29 compatibility */
+    val filePath: String? = null,
     val status: String,
     val progress: Int,
     val downloadedBytes: Long,

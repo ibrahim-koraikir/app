@@ -3,6 +3,8 @@ package com.entertainmentbrowser.presentation.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.entertainmentbrowser.domain.repository.SettingsRepository
+import com.entertainmentbrowser.util.adblock.AdBlockStatus
+import com.entertainmentbrowser.util.adblock.FilterUpdateManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,6 +15,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.entertainmentbrowser.util.WebViewPool
 
 /**
  * ViewModel for the Settings screen.
@@ -22,7 +25,8 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val filterUpdateManager: FilterUpdateManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -30,6 +34,7 @@ class SettingsViewModel @Inject constructor(
 
     init {
         observeSettings()
+        observeAdBlockStatus()
     }
 
     /**
@@ -51,6 +56,19 @@ class SettingsViewModel @Inject constructor(
                         settings = settings,
                         isLoading = false
                     )
+                }
+            }
+            .launchIn(viewModelScope)
+    }
+    
+    /**
+     * Observe ad-blocking status changes.
+     */
+    private fun observeAdBlockStatus() {
+        AdBlockStatus.status
+            .onEach { status ->
+                _uiState.update {
+                    it.copy(adBlockStatus = status)
                 }
             }
             .launchIn(viewModelScope)
@@ -93,9 +111,18 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         showClearCacheDialog = false,
-                        showClearHistoryDialog = false
+                        showClearHistoryDialog = false,
+                        showClearBrowsingDataDialog = false
                     )
                 }
+            }
+            
+            is SettingsEvent.ShowClearBrowsingDataDialog -> {
+                _uiState.update { it.copy(showClearBrowsingDataDialog = true) }
+            }
+            
+            is SettingsEvent.ConfirmClearBrowsingData -> {
+                clearBrowsingData()
             }
             
             is SettingsEvent.ClearError -> {
@@ -106,8 +133,36 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         cacheCleared = false,
-                        historyCleared = false
+                        historyCleared = false,
+                        browsingDataCleared = false
                     )
+                }
+            }
+            
+            is SettingsEvent.UpdateSearchEngine -> {
+                updateSearchEngine(event.engineOrdinal)
+            }
+            
+            is SettingsEvent.RefreshAdBlockFilters -> {
+                refreshAdBlockFilters()
+            }
+            
+            is SettingsEvent.DismissFiltersRefreshed -> {
+                _uiState.update { it.copy(filtersRefreshed = false) }
+            }
+        }
+    }
+    
+    /**
+     * Update search engine setting.
+     */
+    private fun updateSearchEngine(engineOrdinal: Int) {
+        viewModelScope.launch {
+            try {
+                settingsRepository.updateSearchEngine(engineOrdinal)
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(error = e.message ?: "Failed to update search engine")
                 }
             }
         }
@@ -207,6 +262,66 @@ class SettingsViewModel @Inject constructor(
                     it.copy(
                         isLoading = false,
                         error = e.message ?: "Failed to clear download history"
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Clear all browsing data including cookies and WebStorage.
+     */
+    private fun clearBrowsingData() {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true, showClearBrowsingDataDialog = false) }
+                WebViewPool.clearAllBrowsingData()
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        browsingDataCleared = true
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to clear browsing data"
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Manually refresh ad-blocking filters.
+     * Triggers a filter update and reloads the engines.
+     */
+    private fun refreshAdBlockFilters() {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true) }
+                AdBlockStatus.setRefreshing(true)
+                
+                // Trigger filter update
+                val success = filterUpdateManager.forceUpdate()
+                
+                AdBlockStatus.setRefreshing(false)
+                AdBlockStatus.resetWarningFlag()
+                
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        filtersRefreshed = success,
+                        error = if (!success) "Failed to update filters. Check your internet connection." else null
+                    )
+                }
+            } catch (e: Exception) {
+                AdBlockStatus.setRefreshing(false)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to refresh ad-block filters"
                     )
                 }
             }

@@ -22,6 +22,11 @@
         MONETIZATION WHITELIST
         Allow cleartext ONLY for ad network domains used in monetized tabs.
         These domains are required for revenue generation via the "Sponsored" card.
+        
+        NOTE: Primary ad URLs use HTTPS (see Constants.kt). Cleartext exceptions
+        are needed because ad networks may redirect through HTTP tracking URLs
+        before reaching the final destination. Without these exceptions, the
+        redirect chain breaks and ads fail to load.
     -->
     <domain-config cleartextTrafficPermitted="true">
         <!-- 
@@ -40,6 +45,24 @@
         -->
         <domain includeSubdomains="true">dzo.chesskings.live</domain>
         <domain includeSubdomains="true">grandtech.live</domain>
+        
+        <!-- 
+            Ad-Maven Ad Network
+            Required: Secondary monetization partner
+        -->
+        <domain includeSubdomains="true">jobviseerunpost.org</domain>
+        
+        <!-- 
+            Monetag Ad Network
+            Required: Secondary monetization partner
+        -->
+        <domain includeSubdomains="true">otieu.com</domain>
+        
+        <!-- 
+            HilltopAds Ad Network
+            Required: Secondary monetization partner
+        -->
+        <domain includeSubdomains="true">evenchart.com</domain>
         
         <!-- 
             ADDING NEW DOMAINS:

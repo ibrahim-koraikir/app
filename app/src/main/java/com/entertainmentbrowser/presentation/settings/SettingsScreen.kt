@@ -2,6 +2,7 @@ package com.entertainmentbrowser.presentation.settings
 
 import android.content.Intent
 import android.net.Uri
+import com.entertainmentbrowser.domain.model.SearchEngine
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -125,7 +126,7 @@ fun SettingsScreen(
                 
                 Spacer(modifier = Modifier.height(32.dp))
                 
-                // Haptic Feedback Section
+                // Preferences Section
                 SettingsSection(title = "PREFERENCES") {
                     SettingsGroup {
                         SettingItemWithSwitch(
@@ -133,6 +134,16 @@ fun SettingsScreen(
                             checked = uiState.settings.hapticFeedbackEnabled,
                             onCheckedChange = {
                                 viewModel.onEvent(SettingsEvent.ToggleHapticFeedback(it))
+                            }
+                        )
+                        
+                        SettingsDivider()
+                        
+                        // Search Engine Picker
+                        SearchEnginePicker(
+                            selectedEngine = uiState.settings.searchEngine,
+                            onEngineSelected = { engine ->
+                                viewModel.onEvent(SettingsEvent.UpdateSearchEngine(engine.ordinal))
                             }
                         )
                     }
@@ -149,6 +160,37 @@ fun SettingsScreen(
                             onClick = {
                                 android.util.Log.d("SettingsScreen", "View Bookmarks clicked!")
                                 onNavigateToBookmarks()
+                            }
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                // Privacy Section
+                SettingsSection(title = "PRIVACY") {
+                    SettingsGroup {
+                        SettingItemWithNavigation(
+                            label = "Clear Browsing Data",
+                            description = "Clear cookies, site data, and logins",
+                            labelColor = Color(0xFFFF3B30), // --accent-color
+                            onClick = {
+                                viewModel.onEvent(SettingsEvent.ShowClearBrowsingDataDialog)
+                            }
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                // Ad-Blocking Section
+                SettingsSection(title = "AD BLOCKING") {
+                    SettingsGroup {
+                        // Ad-block status display
+                        AdBlockStatusItem(
+                            status = uiState.adBlockStatus,
+                            onRefreshClick = {
+                                viewModel.onEvent(SettingsEvent.RefreshAdBlockFilters)
                             }
                         )
                     }
@@ -255,6 +297,29 @@ fun SettingsScreen(
             )
         }
         
+        // Clear Browsing Data Confirmation Dialog
+        if (uiState.showClearBrowsingDataDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.onEvent(SettingsEvent.DismissDialog) },
+                title = { Text("Clear Browsing Data") },
+                text = { Text("This will clear all cookies, site data, and saved logins. You will be logged out of all websites.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = { viewModel.onEvent(SettingsEvent.ConfirmClearBrowsingData) }
+                    ) {
+                        Text("Clear")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { viewModel.onEvent(SettingsEvent.DismissDialog) }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+        
         // Success Snackbar
         if (uiState.cacheCleared) {
             LaunchedEffect(Unit) {
@@ -281,6 +346,34 @@ fun SettingsScreen(
                     .padding(16.dp)
             ) {
                 Text("Download history cleared successfully")
+            }
+        }
+        
+        if (uiState.browsingDataCleared) {
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(2000)
+                viewModel.onEvent(SettingsEvent.DismissSuccess)
+            }
+            Snackbar(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp)
+            ) {
+                Text("Browsing data cleared successfully")
+            }
+        }
+        
+        if (uiState.filtersRefreshed) {
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(2000)
+                viewModel.onEvent(SettingsEvent.DismissFiltersRefreshed)
+            }
+            Snackbar(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp)
+            ) {
+                Text("Ad-blocking filters updated successfully")
             }
         }
         
@@ -482,5 +575,180 @@ private fun getAppVersion(): String {
         com.entertainmentbrowser.BuildConfig.VERSION_NAME
     } catch (e: Exception) {
         "1.0.0"
+    }
+}
+
+/**
+ * Ad-block status display with refresh button.
+ * Shows detailed status messages for degraded states.
+ */
+@Composable
+fun AdBlockStatusItem(
+    status: com.entertainmentbrowser.util.adblock.AdBlockStatus.Status,
+    onRefreshClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Status",
+                    fontSize = 16.sp,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                // Status indicator with color
+                val statusColor = when {
+                    !status.isInitialized -> Color(0xFF94A3B8) // Gray - initializing
+                    status.isBothEnginesFailed() -> Color(0xFFFF3B30) // Red - both failed
+                    status.isDegraded -> Color(0xFFFFAA00) // Orange - degraded
+                    status.isTruncated -> Color(0xFFFFAA00) // Orange - truncated
+                    else -> Color(0xFF34C759) // Green - healthy
+                }
+                
+                Text(
+                    text = status.getStatusMessage(),
+                    fontSize = 14.sp,
+                    color = statusColor
+                )
+            }
+            
+            // Refresh button
+            if (!status.isRefreshing) {
+                TextButton(
+                    onClick = onRefreshClick,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = Color(0xFFFF3B30)
+                    )
+                ) {
+                    Text("Refresh")
+                }
+            } else {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = Color(0xFFFF3B30),
+                    strokeWidth = 2.dp
+                )
+            }
+        }
+        
+        // Show detailed message for degraded/truncated states
+        if (status.isDegraded || status.isTruncated || status.isBothEnginesFailed()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // Detailed status explanation
+            Text(
+                text = status.getDetailedStatusMessage(),
+                fontSize = 12.sp,
+                color = Color(0xFF94A3B8)
+            )
+            
+            // Show explicit note when both engines failed
+            if (status.isBothEnginesFailed()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "⚠️ Tap Refresh to try updating filters",
+                    fontSize = 12.sp,
+                    color = Color(0xFFFF3B30)
+                )
+            } else if (status.isDegraded || status.isTruncated) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Tap Refresh to update ad-blocking filters",
+                    fontSize = 12.sp,
+                    color = Color(0xFF94A3B8)
+                )
+            }
+        }
+        
+        // Show rule stats in debug/detailed view (optional - can be toggled)
+        if (status.isInitialized && status.ruleStats.totalRulesLoaded > 0) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Rules: ${status.ruleStats.totalRulesLoaded} loaded" +
+                    if (status.ruleStats.totalRulesDropped > 0) 
+                        ", ${status.ruleStats.totalRulesDropped} dropped" 
+                    else "",
+                fontSize = 11.sp,
+                color = Color(0xFF64748B) // Slate-500
+            )
+        }
+    }
+}
+
+/**
+ * Search engine picker with dropdown.
+ */
+@Composable
+fun SearchEnginePicker(
+    selectedEngine: SearchEngine,
+    onEngineSelected: (SearchEngine) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                onClick = { expanded = true },
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            )
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Search engine",
+                    fontSize = 16.sp,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = selectedEngine.displayName,
+                    fontSize = 14.sp,
+                    color = Color(0xFF94A3B8)
+                )
+            }
+            
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = Color(0xFF94A3B8)
+            )
+        }
+        
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.background(Color(0xFF1A1F2E))
+        ) {
+            SearchEngine.entries.forEach { engine ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = engine.displayName,
+                            color = if (engine == selectedEngine) Color(0xFFFF3B30) else Color.White
+                        )
+                    },
+                    onClick = {
+                        onEngineSelected(engine)
+                        expanded = false
+                    }
+                )
+            }
+        }
     }
 }

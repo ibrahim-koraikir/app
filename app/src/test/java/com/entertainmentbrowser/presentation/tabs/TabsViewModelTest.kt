@@ -112,7 +112,7 @@ class TabsViewModelTest {
     fun `closeTab calls repository`() = runTest(testDispatcher) {
         // Given
         every { tabRepository.getAllTabs() } returns flowOf(testTabs)
-        coEvery { tabRepository.closeTab("tab1") } returns Unit
+        coEvery { tabRepository.closeTab("tab1") } returns "tab2" // Returns next tab ID
         viewModel = TabsViewModel(tabRepository)
         advanceUntilIdle()
         

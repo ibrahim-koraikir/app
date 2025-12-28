@@ -7,12 +7,15 @@ import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import coil.ImageLoader
+import coil.ImageLoaderFactory
 import com.entertainmentbrowser.data.worker.TabCleanupWorker
 import com.entertainmentbrowser.domain.repository.WebsiteRepository
 import com.entertainmentbrowser.util.CacheManager
 import com.entertainmentbrowser.util.GpuMemoryManager
 import com.entertainmentbrowser.util.WebViewPool
 import com.entertainmentbrowser.util.adblock.FastAdBlockEngine
+import com.entertainmentbrowser.data.remote.RemoteAdConfig
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,7 +26,29 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 @HiltAndroidApp
-class EntertainmentBrowserApp : Application() {
+class EntertainmentBrowserApp : Application(), ImageLoaderFactory {
+    
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .components {
+                add(com.entertainmentbrowser.di.Base64Keyer())
+                add(com.entertainmentbrowser.di.Base64Fetcher.Factory())
+            }
+            .memoryCache {
+                coil.memory.MemoryCache.Builder(this)
+                    .maxSizePercent(0.25)
+                    .build()
+            }
+            .diskCache {
+                coil.disk.DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(50 * 1024 * 1024)
+                    .build()
+            }
+            .crossfade(150)
+            .respectCacheHeaders(false)
+            .build()
+    }
     
     @Inject
     lateinit var websiteRepository: WebsiteRepository
@@ -43,7 +68,7 @@ class EntertainmentBrowserApp : Application() {
         
         // Enable StrictMode in debug builds for performance monitoring (Requirements 17.1, 17.2)
         if (BuildConfig.DEBUG) {
-            enableDebugProfiler()
+            enableDebugStrictMode()
         }
         
         // Critical setup on main thread - logging only
@@ -52,43 +77,39 @@ class EntertainmentBrowserApp : Application() {
         // Move all non-critical initialization to background threads
         if (BuildConfig.DEBUG) {
             // Wrap initialization with performance logging in debug builds (Requirement 17.5)
-            logInitializationPerformance()
+            logDebugPerformance("App Initialization") {
+                initializeInBackground()
+            }
         } else {
             initializeInBackground()
         }
     }
     
     /**
-     * Enables debug profiler with StrictMode.
-     * Only available in debug builds via reflection to avoid compile-time dependency.
+     * Enable StrictMode via reflection to avoid compile-time dependency on debug source set
      */
-    private fun enableDebugProfiler() {
+    private fun enableDebugStrictMode() {
         try {
             val profilerClass = Class.forName("com.entertainmentbrowser.debug.ProfilerConfig")
-            val enableStrictModeMethod = profilerClass.getMethod("enableStrictMode")
-            enableStrictModeMethod.invoke(profilerClass.getField("INSTANCE").get(null))
+            val method = profilerClass.getMethod("enableStrictMode")
+            method.invoke(null)
         } catch (e: Exception) {
-            Log.w(TAG, "ProfilerConfig not available (expected in release builds)")
+            // ProfilerConfig not available in release builds
         }
     }
     
     /**
-     * Logs initialization performance using ProfilerConfig.
-     * Only available in debug builds via reflection.
+     * Log performance via reflection to avoid compile-time dependency on debug source set
      */
-    private fun logInitializationPerformance() {
+    private fun logDebugPerformance(tag: String, block: () -> Unit) {
         try {
             val profilerClass = Class.forName("com.entertainmentbrowser.debug.ProfilerConfig")
-            val logPerformanceMethod = profilerClass.getMethod("logPerformance", String::class.java, Function0::class.java)
-            logPerformanceMethod.invoke(
-                profilerClass.getField("INSTANCE").get(null),
-                "App Initialization",
-                { initializeInBackground() }
-            )
+            val companion = profilerClass.getDeclaredField("Companion").get(null)
+            val method = companion.javaClass.getMethod("logPerformance", String::class.java, Function0::class.java)
+            method.invoke(companion, tag, block)
         } catch (e: Exception) {
-            // Fallback if profiler not available
-            Log.w(TAG, "Performance logging not available")
-            initializeInBackground()
+            // ProfilerConfig not available, just run the block
+            block()
         }
     }
     
@@ -98,6 +119,8 @@ class EntertainmentBrowserApp : Application() {
         applicationScope.coroutineContext.cancel()
         // Clean up WebView state manager
         webViewStateManager.clearAll()
+        // Clear WebView pool to destroy any pooled WebView instances
+        WebViewPool.clear()
     }
     
     private fun setupLogging() {
@@ -137,6 +160,21 @@ class EntertainmentBrowserApp : Application() {
         applicationScope.launch(Dispatchers.IO) {
             clearOldCache()
         }
+        
+        // Initialize remote ad config on IO dispatcher
+        applicationScope.launch(Dispatchers.IO) {
+            initializeRemoteAdConfig()
+        }
+    }
+    
+    private suspend fun initializeRemoteAdConfig() {
+        try {
+            Log.d(TAG, "📢 Initializing remote ad config...")
+            RemoteAdConfig.refreshConfig(this)
+            Log.d(TAG, "✅ Remote ad config initialized")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to initialize remote ad config", e)
+        }
     }
     
     @Inject
@@ -148,20 +186,23 @@ class EntertainmentBrowserApp : Application() {
     @Inject
     lateinit var webViewStateManager: com.entertainmentbrowser.util.WebViewStateManager
     
-    private fun initializeAdBlocking() {
+    @Inject
+    lateinit var antiAdblockBypass: com.entertainmentbrowser.util.adblock.AntiAdblockBypass
+    
+    private suspend fun initializeAdBlocking() {
         try {
             Log.d(TAG, "🚀 Preloading ad-blockers...")
             val startTime = System.currentTimeMillis()
             
-            // Initialize both engines in parallel
-            val fastThread = Thread { fastAdBlockEngine.preloadFromAssets() }
-            val advancedThread = Thread { advancedAdBlockEngine.preloadFromAssets() }
-            
-            fastThread.start()
-            advancedThread.start()
-            
-            fastThread.join()
-            advancedThread.join()
+            // Initialize both engines in parallel using coroutines
+            kotlinx.coroutines.coroutineScope {
+                launch(Dispatchers.IO) {
+                    fastAdBlockEngine.preloadFromAssets()
+                }
+                launch(Dispatchers.IO) {
+                    advancedAdBlockEngine.preloadFromAssets()
+                }
+            }
             
             val duration = System.currentTimeMillis() - startTime
             
@@ -169,36 +210,86 @@ class EntertainmentBrowserApp : Application() {
             val fastStatus = fastAdBlockEngine.getStatus()
             val advancedStatus = advancedAdBlockEngine.getStatus()
             
+            // Calculate total blocked domains for status
+            val totalBlockedDomains = fastStatus.blockedDomainsCount + advancedStatus.blockedDomainsCount
+            
+            // Get truncation info from AdvancedAdBlockEngine
+            val engineRuleStats = advancedAdBlockEngine.getRuleStats()
+            val truncationPercentage = engineRuleStats.getTruncationPercentage()
+            
+            // Convert to AdBlockStatus.RuleStats for UI observation
+            val statusRuleStats = com.entertainmentbrowser.util.adblock.AdBlockStatus.RuleStats(
+                blockedDomains = engineRuleStats.blockedDomains,
+                blockedPaths = engineRuleStats.blockedPaths,
+                wildcardPatternsLoaded = engineRuleStats.wildcardPatternsLoaded,
+                wildcardPatternsDropped = engineRuleStats.wildcardPatternsDropped,
+                wildcardPatternsLimit = engineRuleStats.wildcardPatternsLimit,
+                regexPatternsLoaded = engineRuleStats.regexPatternsLoaded,
+                regexPatternsDropped = engineRuleStats.regexPatternsDropped,
+                regexPatternsLimit = engineRuleStats.regexPatternsLimit,
+                totalRulesLoaded = engineRuleStats.totalRulesLoaded,
+                totalRulesDropped = engineRuleStats.totalRulesDropped
+            )
+            
             if (fastStatus.isHealthy() && advancedStatus.isHealthy()) {
                 Log.d(TAG, "✅ Ad-blockers ready in ${duration}ms (95%+ blocking)")
                 Log.d(TAG, "   FastEngine: ${fastStatus.blockedDomainsCount} domains, ${fastStatus.blockedPatternsCount} patterns")
                 Log.d(TAG, "   AdvancedEngine: ${advancedStatus.blockedDomainsCount} domains, ${advancedStatus.wildcardPatternsCount} wildcards, ${advancedStatus.regexPatternsCount} regex")
                 
+                // Update shared status for UI observation with detailed rule stats
+                com.entertainmentbrowser.util.adblock.AdBlockStatus.updateStatus(
+                    isInitialized = true,
+                    fastEngineHealthy = true,
+                    advancedEngineHealthy = true,
+                    isTruncated = advancedStatus.isTruncated(),
+                    truncationPercentage = truncationPercentage,
+                    blockedDomainsCount = totalBlockedDomains,
+                    ruleStats = statusRuleStats
+                )
+                
                 // Log rule truncation if any
                 if (advancedStatus.isTruncated()) {
-                    val ruleStats = advancedAdBlockEngine.getRuleStats()
                     Log.w(TAG, "⚠️ AdvancedEngine rule truncation detected:")
-                    Log.w(TAG, "   Wildcard: ${ruleStats.wildcardPatternsLoaded}/${ruleStats.wildcardPatternsLimit} (dropped: ${ruleStats.wildcardPatternsDropped})")
-                    Log.w(TAG, "   Regex: ${ruleStats.regexPatternsLoaded}/${ruleStats.regexPatternsLimit} (dropped: ${ruleStats.regexPatternsDropped})")
-                    Log.w(TAG, "   Total truncation: ${ruleStats.getTruncationPercentage()}%")
+                    Log.w(TAG, "   Wildcard: ${engineRuleStats.wildcardPatternsLoaded}/${engineRuleStats.wildcardPatternsLimit} (dropped: ${engineRuleStats.wildcardPatternsDropped})")
+                    Log.w(TAG, "   Regex: ${engineRuleStats.regexPatternsLoaded}/${engineRuleStats.regexPatternsLimit} (dropped: ${engineRuleStats.regexPatternsDropped})")
+                    Log.w(TAG, "   Total truncation: ${truncationPercentage}%")
                 }
             } else {
                 Log.w(TAG, "⚠️ Ad-blocker initialization incomplete:")
+                
+                val errorMessages = mutableListOf<String>()
                 if (!fastStatus.isHealthy()) {
                     Log.w(TAG, "   FastEngine: initialized=${fastStatus.isInitialized}, failed=${fastStatus.initializationFailed}, rules=${fastStatus.blockedDomainsCount}")
+                    errorMessages.add("FastEngine failed")
                 }
                 if (!advancedStatus.isHealthy()) {
                     Log.w(TAG, "   AdvancedEngine: initialized=${advancedStatus.isInitialized}, failed=${advancedStatus.initializationFailed}, rules=${advancedStatus.blockedDomainsCount}")
+                    errorMessages.add("AdvancedEngine failed")
                 }
+                
+                // Update shared status with degraded state and detailed rule stats
+                com.entertainmentbrowser.util.adblock.AdBlockStatus.updateStatus(
+                    isInitialized = true,
+                    fastEngineHealthy = fastStatus.isHealthy(),
+                    advancedEngineHealthy = advancedStatus.isHealthy(),
+                    isTruncated = advancedStatus.isTruncated(),
+                    truncationPercentage = truncationPercentage,
+                    blockedDomainsCount = totalBlockedDomains,
+                    errorMessage = errorMessages.joinToString(", "),
+                    ruleStats = statusRuleStats
+                )
                 
                 // If both engines failed, consider triggering filter update
                 if (fastStatus.initializationFailed && advancedStatus.initializationFailed) {
                     Log.e(TAG, "❌ Both ad-blocking engines failed to initialize - ad blocking will be degraded")
-                    // Note: FilterUpdateManager.forceUpdate() could be triggered here if needed
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to start ad-blocker", e)
+            // Update status with failure
+            com.entertainmentbrowser.util.adblock.AdBlockStatus.setInitializationFailed(
+                e.message ?: "Unknown error during initialization"
+            )
             // Continue without ad-blocking (graceful degradation)
         }
     }

@@ -20,7 +20,8 @@ class GetAllWebsitesUseCase @Inject constructor(
             websiteRepository.getByCategory(Category.SOCIAL_MEDIA),
             websiteRepository.getByCategory(Category.GAMES),
             websiteRepository.getByCategory(Category.VIDEO_CALL),
-            websiteRepository.getByCategory(Category.ARABIC)
+            websiteRepository.getByCategory(Category.ARABIC),
+            websiteRepository.getByCategory(Category.TRENDING)
         ) { arrays ->
             arrays.flatMap { it.toList() }
         }

@@ -21,20 +21,23 @@ sealed class Screen(val route: String) {
     data object Home : Screen("home")
     
     /**
-     * Favorites screen showing user's favorited websites
-     */
-    data object Favorites : Screen("favorites")
-    
-    /**
      * WebView screen for browsing websites
      * @param url The website URL to load (URL encoded)
      */
     data object WebView : Screen("webview/{url}") {
         const val ARG_URL = "url"
+        const val ACTIVE_TAB_MARKER = "__ACTIVE_TAB__"
         
         fun createRoute(url: String): String {
             val encodedUrl = Uri.encode(url.trim())
             return "webview/$encodedUrl"
+        }
+        
+        /**
+         * Creates a route to show the active tab without creating a new one
+         */
+        fun createActiveTabRoute(): String {
+            return "webview/$ACTIVE_TAB_MARKER"
         }
         
         val arguments = listOf(

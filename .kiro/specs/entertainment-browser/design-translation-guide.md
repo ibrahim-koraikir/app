@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide maps the existing HTML/Tailwind CSS designs in the `screens/` folder to Jetpack Compose with Material 3 components.
+This guide maps the existing HTML/Tailwind CSS designs in the `docs/design-mockups/` folder to Jetpack Compose with Material 3 components.
 
 ## Color Palette
 

@@ -62,4 +62,29 @@ sealed class SettingsEvent {
      * Dismiss success message.
      */
     data object DismissSuccess : SettingsEvent()
+    
+    /**
+     * Update search engine selection.
+     */
+    data class UpdateSearchEngine(val engineOrdinal: Int) : SettingsEvent()
+    
+    /**
+     * Show clear browsing data confirmation dialog.
+     */
+    data object ShowClearBrowsingDataDialog : SettingsEvent()
+    
+    /**
+     * Confirm clear browsing data action.
+     */
+    data object ConfirmClearBrowsingData : SettingsEvent()
+    
+    /**
+     * Refresh ad-blocking filters manually.
+     */
+    data object RefreshAdBlockFilters : SettingsEvent()
+    
+    /**
+     * Dismiss filters refreshed success message.
+     */
+    data object DismissFiltersRefreshed : SettingsEvent()
 }

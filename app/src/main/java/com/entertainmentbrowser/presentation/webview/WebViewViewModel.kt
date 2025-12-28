@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.entertainmentbrowser.domain.repository.DownloadRepository
 import com.entertainmentbrowser.presentation.navigation.Screen
+import com.entertainmentbrowser.util.DownloadPermissionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +30,7 @@ class WebViewViewModel @Inject constructor(
     private val bookmarkRepository: com.entertainmentbrowser.domain.repository.BookmarkRepository,
     private val thumbnailCapture: com.entertainmentbrowser.util.ThumbnailCapture,
     private val webViewStateManager: com.entertainmentbrowser.util.WebViewStateManager,
+    private val downloadPermissionState: DownloadPermissionState,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
     
@@ -42,8 +44,8 @@ class WebViewViewModel @Inject constructor(
     
     // Interstitial ad counter with background preloading
     private var pageLoadCount = 0
-    private val preloadThreshold = 2  // Start preloading on page 2
-    private val showThreshold = 3     // Show ad on page 3+ (if preloaded)
+    private var showThreshold = (7..10).random() // Random threshold between 7 and 10
+    private val preloadBeforePages = 2           // Start preloading 2 pages before threshold
     
     private val _showInterstitialAd = MutableStateFlow(false)
     val showInterstitialAd: StateFlow<Boolean> = _showInterstitialAd.asStateFlow()
@@ -51,6 +53,10 @@ class WebViewViewModel @Inject constructor(
     // Signal to start preloading in background
     private val _shouldPreloadAd = MutableStateFlow(false)
     val shouldPreloadAd: StateFlow<Boolean> = _shouldPreloadAd.asStateFlow()
+    
+    // Top toast message for background tab notifications
+    private val _topToastMessage = MutableStateFlow<String?>(null)
+    val topToastMessage: StateFlow<String?> = _topToastMessage.asStateFlow()
     
     // Track if ad is ready to show
     private var isAdReady = false
@@ -60,26 +66,17 @@ class WebViewViewModel @Inject constructor(
         val encodedUrl = savedStateHandle.get<String>(Screen.WebView.ARG_URL)
         val decodedUrl = encodedUrl?.let { android.net.Uri.decode(it) } ?: ""
         
-        // ALWAYS observe tabs first - needed for both monetized and standard tabs
+        // Observe tabs first
         observeTabs()
         
-        if (decodedUrl.startsWith("monetized:")) {
-            // Handle monetized tab request
-            val realUrl = decodedUrl.removePrefix("monetized:")
-            val sanitizedUrl = sanitizeUrl(realUrl)
-            
-            // Set initial URL in UI state BEFORE opening tab
-            _uiState.update { it.copy(url = sanitizedUrl, currentUrl = sanitizedUrl) }
-            
-            // Check if URL is from known DRM site
-            if (DrmDetector.isKnownDrmSite(sanitizedUrl)) {
-                _uiState.update { it.copy(drmDetected = true) }
-            }
-            
-            // Open monetized tab
-            openMonetizedTab(sanitizedUrl)
+        // Check if this is a request to show the active tab (edge swipe from home)
+        val isActiveTabRequest = decodedUrl == Screen.WebView.ACTIVE_TAB_MARKER
+        
+        if (isActiveTabRequest) {
+            // Just show the active tab, don't create a new one
+            loadActiveTab()
         } else {
-            // Standard tab request
+            // Standard tab request - create new tab
             val initialUrl = sanitizeUrl(decodedUrl)
             
             // Set initial URL in UI state immediately
@@ -96,6 +93,31 @@ class WebViewViewModel @Inject constructor(
     }
     
     /**
+     * Load the active tab without creating a new one (used for edge swipe navigation)
+     */
+    private fun loadActiveTab() {
+        viewModelScope.launch {
+            try {
+                tabRepository.getActiveTab().collect { activeTab ->
+                    activeTab?.let { tab ->
+                        currentTabId = tab.id
+                        _uiState.update { 
+                            it.copy(
+                                url = tab.url, 
+                                currentUrl = tab.url,
+                                drmDetected = DrmDetector.isKnownDrmSite(tab.url)
+                            ) 
+                        }
+                    }
+                    return@collect // Only need first emission
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = "Failed to load active tab") }
+            }
+        }
+    }
+    
+    /**
      * Create a new tab for the given URL
      */
     private fun createTabForUrl(url: String) {
@@ -103,14 +125,14 @@ class WebViewViewModel @Inject constructor(
             try {
                 val uri = try { android.net.Uri.parse(url) } catch (_: Exception) { null }
                 if (uri == null || uri.host.isNullOrBlank()) {
-                    _uiState.update { it.copy(error = "Invalid URL") }
+                    _uiState.update { it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_invalid_url)) }
                     return@launch
                 }
                 val title = extractTitleFromUrl(url)
                 val tab = tabRepository.createTab(url, title)
                 currentTabId = tab.id
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to create tab: ${e.message}") }
+                _uiState.update { it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_failed_create_tab, e.message ?: "")) }
             }
         }
     }
@@ -132,9 +154,9 @@ class WebViewViewModel @Inject constructor(
     private fun extractTitleFromUrl(url: String): String {
         return try {
             val uri = android.net.Uri.parse(url)
-            uri.host?.replace("www.", "") ?: "New Tab"
+            uri.host?.replace("www.", "") ?: context.getString(com.entertainmentbrowser.R.string.new_tab)
         } catch (e: Exception) {
-            "New Tab"
+            context.getString(com.entertainmentbrowser.R.string.new_tab)
         }
     }
 
@@ -186,6 +208,11 @@ class WebViewViewModel @Inject constructor(
                 handleVideoDetected(event.videoUrl)
             }
             
+            is WebViewEvent.VideoPlayingStateChanged -> {
+                android.util.Log.d("WebViewViewModel", "▶️ Video playing state changed: ${event.isPlaying}")
+                _uiState.update { it.copy(isVideoPlaying = event.isPlaying) }
+            }
+            
             is WebViewEvent.DrmDetected -> {
                 _uiState.update { 
                     it.copy(
@@ -217,6 +244,18 @@ class WebViewViewModel @Inject constructor(
                 _uiState.update { it.copy(error = event.message) }
             }
             
+            is WebViewEvent.PageLoadError -> {
+                handlePageLoadError(event.errorType, event.errorCode)
+            }
+            
+            is WebViewEvent.RetryPageLoad -> {
+                retryPageLoad()
+            }
+            
+            is WebViewEvent.DismissErrorOverlay -> {
+                _uiState.update { it.copy(showErrorOverlay = false, pageErrorType = PageErrorType.NONE) }
+            }
+            
             // Navigation events are handled by the screen directly
             WebViewEvent.NavigateBack,
             WebViewEvent.NavigateForward,
@@ -243,7 +282,7 @@ class WebViewViewModel @Inject constructor(
             android.util.Log.d("WebViewViewModel", "❌ Unsupported format: ${VideoDetector.getFormatName(videoUrl)}")
             _uiState.update { 
                 it.copy(
-                    error = "Video format not supported for download: ${VideoDetector.getFormatName(videoUrl)}"
+                    error = context.getString(com.entertainmentbrowser.R.string.error_video_format_not_supported, VideoDetector.getFormatName(videoUrl))
                 )
             }
             return
@@ -264,6 +303,14 @@ class WebViewViewModel @Inject constructor(
     private fun startDownload() {
         val videoUrl = _uiState.value.detectedVideoUrl ?: return
         
+        // Check permissions BEFORE attempting download
+        if (!downloadPermissionState.canStartDownload()) {
+            _uiState.update { 
+                it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_storage_permission_required))
+            }
+            return
+        }
+        
         viewModelScope.launch {
             try {
                 // Generate filename from URL or use timestamp
@@ -279,18 +326,18 @@ class WebViewViewModel @Inject constructor(
                     )
                 }
             } catch (e: SecurityException) {
-                // Permission denied - show user-friendly message
+                // Permission denied - show user-friendly message (fallback if permission check missed edge case)
                 _uiState.update { 
-                    it.copy(error = "Storage permission required. Please grant permission in Settings to download videos.")
+                    it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_storage_permission_required))
                 }
             } catch (e: IllegalArgumentException) {
                 // Invalid URL
                 _uiState.update { 
-                    it.copy(error = "Invalid download URL")
+                    it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_invalid_download_url))
                 }
             } catch (e: Exception) {
                 _uiState.update { 
-                    it.copy(error = "Failed to start download: ${e.message}")
+                    it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_failed_start_download, e.message ?: ""))
                 }
             }
         }
@@ -301,6 +348,14 @@ class WebViewViewModel @Inject constructor(
      */
     private fun startDownloadWithFilename(filename: String, quality: String) {
         val videoUrl = _uiState.value.detectedVideoUrl ?: return
+        
+        // Check permissions BEFORE attempting download
+        if (!downloadPermissionState.canStartDownload()) {
+            _uiState.update { 
+                it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_storage_permission_required))
+            }
+            return
+        }
         
         viewModelScope.launch {
             try {
@@ -316,22 +371,22 @@ class WebViewViewModel @Inject constructor(
                     it.copy(
                         videoDetected = false,
                         detectedVideoUrl = null,
-                        error = "Download started: $filename ($quality)"
+                        error = context.getString(com.entertainmentbrowser.R.string.message_download_started, filename, quality)
                     )
                 }
             } catch (e: SecurityException) {
-                // Permission denied - show user-friendly message
+                // Permission denied - show user-friendly message (fallback if permission check missed edge case)
                 _uiState.update { 
-                    it.copy(error = "Storage permission required. Please grant permission in Settings to download videos.")
+                    it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_storage_permission_required))
                 }
             } catch (e: IllegalArgumentException) {
                 // Invalid URL
                 _uiState.update { 
-                    it.copy(error = "Invalid download URL")
+                    it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_invalid_download_url))
                 }
             } catch (e: Exception) {
                 _uiState.update { 
-                    it.copy(error = "Failed to start download: ${e.message}")
+                    it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_failed_start_download, e.message ?: ""))
                 }
             }
         }
@@ -365,7 +420,7 @@ class WebViewViewModel @Inject constructor(
      */
     private fun shareCurrentUrl() {
         val url = _uiState.value.currentUrl
-        val title = _uiState.value.title.ifEmpty { "Check out this website" }
+        val title = _uiState.value.title.ifEmpty { context.getString(com.entertainmentbrowser.R.string.share_default_title) }
         
         val shareIntent = Intent().apply {
             action = Intent.ACTION_SEND
@@ -374,7 +429,7 @@ class WebViewViewModel @Inject constructor(
             putExtra(Intent.EXTRA_SUBJECT, title)
         }
         
-        val chooserIntent = Intent.createChooser(shareIntent, "Share via")
+        val chooserIntent = Intent.createChooser(shareIntent, context.getString(com.entertainmentbrowser.R.string.share_via))
         chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         
         context.startActivity(chooserIntent)
@@ -388,30 +443,75 @@ class WebViewViewModel @Inject constructor(
     }
     
     /**
+     * Handle page load errors with user-friendly classification
+     */
+    private fun handlePageLoadError(errorType: PageErrorType, errorCode: Int) {
+        android.util.Log.e("WebViewViewModel", "❌ Page load error: $errorType (code: $errorCode)")
+        
+        // Store the last successful URL for retry
+        val lastUrl = _uiState.value.currentUrl.takeIf { it.isNotBlank() }
+        
+        _uiState.update { 
+            it.copy(
+                pageErrorType = errorType,
+                showErrorOverlay = true,
+                lastSuccessfulUrl = lastUrl ?: it.lastSuccessfulUrl,
+                isLoading = false
+            )
+        }
+    }
+    
+    /**
+     * Retry loading the page after an error
+     */
+    private fun retryPageLoad() {
+        val urlToRetry = _uiState.value.lastSuccessfulUrl ?: _uiState.value.currentUrl
+        
+        if (urlToRetry.isNotBlank()) {
+            _uiState.update { 
+                it.copy(
+                    url = urlToRetry,
+                    showErrorOverlay = false,
+                    pageErrorType = PageErrorType.NONE,
+                    isLoading = true
+                )
+            }
+        }
+    }
+    
+    /**
+     * Clear top toast message
+     */
+    fun clearTopToast() {
+        _topToastMessage.value = null
+    }
+    
+    /**
      * Track page load for interstitial ad with background preloading
-     * - Page 2: Start preloading ad in background
-     * - Page 3+: Show ad instantly if preloaded
+     * - Random threshold between 8-14: Show ad
+     * - Preload starts 2 pages before threshold
      */
     fun onPageLoaded() {
         pageLoadCount++
-        android.util.Log.d("WebViewViewModel", "📊 Page load count: $pageLoadCount (preload@$preloadThreshold, show@$showThreshold, ready=$isAdReady)")
+        val preloadAt = showThreshold - preloadBeforePages
+        android.util.Log.d("WebViewViewModel", "📊 Page load count: $pageLoadCount (preload@$preloadAt, show@$showThreshold, ready=$isAdReady)")
         
-        // Start preloading on page 2
-        if (pageLoadCount >= preloadThreshold && !_shouldPreloadAd.value && !isAdReady) {
+        // Start preloading 2 pages before the threshold
+        if (pageLoadCount >= preloadAt && pageLoadCount < showThreshold && !_shouldPreloadAd.value && !isAdReady) {
             android.util.Log.d("WebViewViewModel", "🔄 Starting ad preload in background...")
             _shouldPreloadAd.value = true
         }
         
-        // Show ad on page 3+ ONLY if ad is ready
+        // Show ad at threshold ONLY if ad is ready
         if (pageLoadCount >= showThreshold && isAdReady) {
-            android.util.Log.d("WebViewViewModel", "💰 Showing interstitial ad NOW! (preloaded and ready)")
+            android.util.Log.d("WebViewViewModel", "💰 Showing interstitial ad NOW! (page $pageLoadCount)")
             _showInterstitialAd.value = true
             _shouldPreloadAd.value = false
             isAdReady = false
-            pageLoadCount = 0  // Reset counter for next cycle
+            pageLoadCount = 0
+            showThreshold = (8..14).random() // Pick new random threshold for next cycle
         } else if (pageLoadCount >= showThreshold && !isAdReady) {
             android.util.Log.d("WebViewViewModel", "⏳ Threshold reached but ad not ready yet, waiting...")
-            // Don't reset counter - keep waiting for ad to be ready
         }
     }
     
@@ -429,6 +529,7 @@ class WebViewViewModel @Inject constructor(
             _shouldPreloadAd.value = false
             isAdReady = false
             pageLoadCount = 0
+            showThreshold = (8..14).random() // Pick new random threshold for next cycle
         }
     }
     
@@ -443,65 +544,105 @@ class WebViewViewModel @Inject constructor(
     }
     
     /**
-     * Switch to a different tab
+     * Switch to a different tab.
+     * 
+     * Uses one-shot repository query to validate tab existence before switching,
+     * avoiding race conditions from stale Flow emissions in _tabs.value.
+     * 
+     * @param tabId The ID of the tab to switch to
      */
     fun switchTab(tabId: String) {
         viewModelScope.launch {
             try {
+                // Fetch tab by ID from repository (one-shot query) to validate it exists
+                // This avoids race conditions from relying on potentially stale _tabs.value
+                val tab = tabRepository.getTabById(tabId)
+                
+                if (tab == null) {
+                    android.util.Log.w("WebViewViewModel", "⚠️ Tab not found in database: $tabId")
+                    _uiState.update { it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_tab_not_found)) }
+                    return@launch
+                }
+                
+                // Perform the switch in repository (updates database and WebView state)
                 tabRepository.switchTab(tabId)
                 currentTabId = tabId
                 
-                // Get the tab's stored URL from database
-                val tab = _tabs.value.find { it.id == tabId }
-                
-                // Also check if WebView has a different (more current) URL
+                // Get actual URL from WebViewStateManager (may be more current than DB)
                 val webViewState = webViewStateManager.getWebViewState(tabId)
-                val actualUrl = webViewState?.url?.takeIf { it.isNotBlank() } ?: tab?.url ?: ""
+                val actualUrl = webViewState?.url?.takeIf { it.isNotBlank() } ?: tab.url
                 
-                android.util.Log.d("WebViewViewModel", "Switching to tab $tabId - DB URL: ${tab?.url}, WebView URL: ${webViewState?.url}, Using: $actualUrl")
+                android.util.Log.d("WebViewViewModel", "Switching to tab $tabId - DB URL: ${tab.url}, WebView URL: ${webViewState?.url}, Using: $actualUrl")
                 
-                tab?.let {
-                    _uiState.update { state ->
-                        state.copy(
-                            url = actualUrl,  // Use the actual WebView URL if available
-                            currentUrl = actualUrl,
-                            title = webViewState?.title?.takeIf { t -> t.isNotBlank() } ?: it.title,
-                            videoDetected = false,
-                            detectedVideoUrl = null,
-                            drmDetected = DrmDetector.isKnownDrmSite(actualUrl)
-                        )
-                    }
+                _uiState.update { state ->
+                    state.copy(
+                        url = actualUrl,
+                        currentUrl = actualUrl,
+                        title = webViewState?.title?.takeIf { t -> t.isNotBlank() } ?: tab.title,
+                        videoDetected = false,
+                        detectedVideoUrl = null,
+                        drmDetected = DrmDetector.isKnownDrmSite(actualUrl)
+                    )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to switch tab: ${e.message}") }
+                android.util.Log.e("WebViewViewModel", "❌ Failed to switch tab: $tabId", e)
+                _uiState.update { it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_failed_switch_tab, e.message ?: "")) }
             }
         }
     }
     
     /**
-     * Close a tab
+     * Close a tab.
+     * 
+     * Delegates "next active tab" policy to TabManager/TabRepository to avoid
+     * split-brain state from computing next tab using stale _tabs.value.
+     * The repository returns the ID of the next tab to activate after closing.
+     * 
+     * @param tabId The ID of the tab to close
      */
     fun closeTab(tabId: String) {
         viewModelScope.launch {
             try {
-                tabRepository.closeTab(tabId)
+                val wasCurrentTab = tabId == currentTabId
                 
-                // If we closed the current tab, switch to another tab or clear state
-                if (tabId == currentTabId) {
-                    val remainingTabs = _tabs.value.filter { it.id != tabId }
-                    if (remainingTabs.isNotEmpty()) {
-                        // Switch to the first remaining tab
-                        switchTab(remainingTabs.first().id)
+                // Close tab and get next tab ID from repository
+                // The repository handles "next active tab" policy using fresh DB queries
+                val nextTabId = tabRepository.closeTab(tabId)
+                
+                // Release the WebView for the closed tab to free GPU/memory resources
+                // This recycles the WebView to the pool instead of leaving it paused in cache
+                webViewStateManager.releaseWebViewForPooling(tabId, listOf("AndroidInterface"))
+                
+                if (wasCurrentTab) {
+                    if (nextTabId != null) {
+                        // Repository already activated the next tab, update UI state
+                        currentTabId = nextTabId
+                        
+                        // Fetch the activated tab's data from repository
+                        val nextTab = tabRepository.getTabById(nextTabId)
+                        if (nextTab != null) {
+                            val webViewState = webViewStateManager.getWebViewState(nextTabId)
+                            val actualUrl = webViewState?.url?.takeIf { it.isNotBlank() } ?: nextTab.url
+                            
+                            _uiState.update { state ->
+                                state.copy(
+                                    url = actualUrl,
+                                    currentUrl = actualUrl,
+                                    title = webViewState?.title?.takeIf { t -> t.isNotBlank() } ?: nextTab.title,
+                                    videoDetected = false,
+                                    detectedVideoUrl = null,
+                                    drmDetected = DrmDetector.isKnownDrmSite(actualUrl)
+                                )
+                            }
+                        }
                     } else {
                         // No tabs left, clear state
                         currentTabId = null
-                        _uiState.update {
-                            WebViewUiState()
-                        }
+                        _uiState.update { WebViewUiState() }
                     }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to close tab: ${e.message}") }
+                _uiState.update { it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_failed_close_tab, e.message ?: "")) }
             }
         }
     }
@@ -567,8 +708,8 @@ class WebViewViewModel @Inject constructor(
     }
     
     /**
-     * Open a new tab with the given URL
-     * Handles monetization ad interception
+     * Open a new tab with the given URL in the background.
+     * The user stays on the current tab and the new tab is created in the background.
      */
     fun openNewTab(url: String) {
         viewModelScope.launch {
@@ -576,7 +717,7 @@ class WebViewViewModel @Inject constructor(
                 // Validate URL before creating tab
                 if (url.isBlank() || url == "null") {
                     android.util.Log.w("WebViewViewModel", "❌ Attempted to open blank tab, ignoring")
-                    _uiState.update { it.copy(error = "Invalid URL") }
+                    _uiState.update { it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_invalid_url)) }
                     return@launch
                 }
                 
@@ -585,7 +726,7 @@ class WebViewViewModel @Inject constructor(
                     android.net.Uri.parse(url)
                 } catch (e: Exception) {
                     android.util.Log.w("WebViewViewModel", "❌ Invalid URL format: $url")
-                    _uiState.update { it.copy(error = "Invalid URL format") }
+                    _uiState.update { it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_invalid_url_format)) }
                     return@launch
                 }
                 
@@ -593,41 +734,25 @@ class WebViewViewModel @Inject constructor(
                 val scheme = uri.scheme?.lowercase()
                 if (scheme !in listOf("http", "https")) {
                     android.util.Log.w("WebViewViewModel", "❌ Invalid URL scheme: $scheme")
-                    _uiState.update { it.copy(error = "Only HTTP/HTTPS URLs are supported") }
+                    _uiState.update { it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_unsupported_url_scheme)) }
                     return@launch
                 }
                 
-                android.util.Log.d("WebViewViewModel", "✅ Opening new tab with URL: $url")
+                android.util.Log.d("WebViewViewModel", "🆕 Opening new tab in background with URL: $url")
                 
                 val title = extractTitleFromUrl(url)
-                val tab = tabRepository.createTab(url, title)
-                // Switch to the new tab
-                switchTab(tab.id)
+                
+                // Create tab in background - stays on current tab
+                val tab = tabRepository.createTabInBackground(url, title)
+                
+                android.util.Log.d("WebViewViewModel", "✅ New background tab created with ID: ${tab.id}")
+                
+                // Show top toast confirmation to user
+                _topToastMessage.value = context.getString(com.entertainmentbrowser.R.string.message_tab_opened_background)
+                
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to open new tab: ${e.message}") }
-            }
-        }
-    }
-    
-    /**
-     * Open a new tab specifically for monetization (AdBlock disabled)
-     */
-    fun openMonetizedTab(url: String) {
-        viewModelScope.launch {
-            try {
-                android.util.Log.d("WebViewViewModel", "💰 Opening Monetized Tab: $url")
-                
-                val title = "Sponsored"
-                val tab = tabRepository.createTab(url, title)
-                
-                // Mark this tab as monetized in the state manager
-                // This will be read by CustomWebView to disable AdBlock
-                webViewStateManager.setMonetized(tab.id, true)
-                
-                // Switch to the new tab
-                switchTab(tab.id)
-            } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to open sponsored tab: ${e.message}") }
+                android.util.Log.e("WebViewViewModel", "❌ Failed to open new tab", e)
+                _uiState.update { it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_failed_open_new_tab, e.message ?: "")) }
             }
         }
     }
@@ -640,10 +765,14 @@ class WebViewViewModel @Inject constructor(
             try {
                 val bookmarkTitle = title.ifBlank { extractTitleFromUrl(url) }
                 val isAdded = bookmarkRepository.toggleBookmark(bookmarkTitle, url)
-                val message = if (isAdded) "Bookmark added" else "Bookmark removed"
+                val message = if (isAdded) {
+                    context.getString(com.entertainmentbrowser.R.string.message_bookmark_added)
+                } else {
+                    context.getString(com.entertainmentbrowser.R.string.message_bookmark_removed)
+                }
                 _uiState.update { it.copy(error = message) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to add bookmark: ${e.message}") }
+                _uiState.update { it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_failed_add_bookmark, e.message ?: "")) }
             }
         }
     }
@@ -656,10 +785,14 @@ class WebViewViewModel @Inject constructor(
             try {
                 val title = extractTitleFromUrl(url)
                 val isAdded = bookmarkRepository.toggleBookmark(title, url)
-                val message = if (isAdded) "Bookmark added" else "Bookmark removed"
+                val message = if (isAdded) {
+                    context.getString(com.entertainmentbrowser.R.string.message_bookmark_added)
+                } else {
+                    context.getString(com.entertainmentbrowser.R.string.message_bookmark_removed)
+                }
                 _uiState.update { it.copy(error = message) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to add bookmark: ${e.message}") }
+                _uiState.update { it.copy(error = context.getString(com.entertainmentbrowser.R.string.error_failed_add_bookmark, e.message ?: "")) }
             }
         }
     }

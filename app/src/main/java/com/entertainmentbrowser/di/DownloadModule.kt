@@ -5,9 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
-// import com.tonyodev.fetch2.Fetch
-// import com.tonyodev.fetch2.FetchConfiguration
-// import com.tonyodev.fetch2okhttp.OkHttpDownloader
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -29,26 +26,6 @@ object DownloadModule {
     ): DownloadManager {
         return context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     }
-    
-    // TODO: Re-enable when Fetch library dependency is resolved
-    // @Provides
-    // @Singleton
-    // fun provideFetch(
-    //     @ApplicationContext context: Context,
-    //     okHttpClient: OkHttpClient
-    // ): Fetch {
-    //     val fetchConfiguration = FetchConfiguration.Builder(context)
-    //         .setDownloadConcurrentLimit(3)
-    //         .setHttpDownloader(OkHttpDownloader(okHttpClient))
-    //         .setNotificationManager(object : com.tonyodev.fetch2.DefaultFetchNotificationManager(context) {
-    //             override fun getChannelId(notificationId: Int, context: Context): String {
-    //                 return DOWNLOAD_NOTIFICATION_CHANNEL_ID
-    //             }
-    //         })
-    //         .build()
-    //     
-    //     return Fetch.getInstance(fetchConfiguration)
-    // }
     
     @Provides
     @Singleton

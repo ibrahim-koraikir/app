@@ -132,16 +132,32 @@ class TabRepositoryImplTest {
     }
     
     @Test
-    fun `closeTab delegates to manager`() = runTest {
+    fun `closeTab delegates to manager and returns next tab ID`() = runTest {
         // Given
         val tabId = "tab1"
-        coEvery { tabManager.closeTab(tabId) } returns Unit
+        val nextTabId = "tab2"
+        coEvery { tabManager.closeTab(tabId) } returns nextTabId
         
         // When
-        repository.closeTab(tabId)
+        val result = repository.closeTab(tabId)
         
         // Then
         coVerify { tabManager.closeTab(tabId) }
+        assertEquals(nextTabId, result)
+    }
+    
+    @Test
+    fun `closeTab returns null when no tabs remain`() = runTest {
+        // Given
+        val tabId = "tab1"
+        coEvery { tabManager.closeTab(tabId) } returns null
+        
+        // When
+        val result = repository.closeTab(tabId)
+        
+        // Then
+        coVerify { tabManager.closeTab(tabId) }
+        assertNull(result)
     }
     
     @Test

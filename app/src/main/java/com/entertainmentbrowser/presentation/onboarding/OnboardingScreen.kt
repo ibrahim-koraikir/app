@@ -1,25 +1,21 @@
 package com.entertainmentbrowser.presentation.onboarding
 
-import android.Manifest
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.entertainmentbrowser.presentation.theme.RedPrimary
-import kotlinx.coroutines.launch
 
 /**
  * Onboarding screen container with HorizontalPager for navigation.
@@ -141,39 +137,9 @@ fun OnboardingScreen(
             }
         }
 
-        // Page indicators
-        if (state.pages.isNotEmpty()) {
-            PageIndicators(
-                pageCount = state.pages.size,
-                currentPage = pagerState.currentPage,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 100.dp)
-            )
-        }
+        // Page indicators - hidden as they overlap with content
+        // The onboarding flow is linear with buttons, so indicators aren't needed
     }
 }
 
-@Composable
-private fun PageIndicators(
-    pageCount: Int,
-    currentPage: Int,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        repeat(pageCount) { index ->
-            Box(
-                modifier = Modifier
-                    .size(if (index == currentPage) 10.dp else 8.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (index == currentPage) RedPrimary
-                        else Color.White.copy(alpha = 0.3f)
-                    )
-            )
-        }
-    }
-}
+

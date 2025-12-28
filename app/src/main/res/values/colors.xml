@@ -5,4 +5,7 @@
     
     <!-- Splash screen background (dark blue) -->
     <color name="splash_background">#0D1117</color>
+    
+    <!-- Launcher icon background -->
+    <color name="ic_launcher_background">#ffffff</color>
 </resources>

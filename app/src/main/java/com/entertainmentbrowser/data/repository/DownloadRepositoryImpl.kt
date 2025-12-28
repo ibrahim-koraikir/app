@@ -1,9 +1,12 @@
 package com.entertainmentbrowser.data.repository
 
 import android.app.DownloadManager
+import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import com.entertainmentbrowser.data.local.dao.DownloadDao
@@ -11,6 +14,7 @@ import com.entertainmentbrowser.data.local.entity.DownloadEntity
 import com.entertainmentbrowser.domain.model.DownloadItem
 import com.entertainmentbrowser.domain.model.DownloadStatus
 import com.entertainmentbrowser.domain.repository.DownloadRepository
+import com.entertainmentbrowser.util.MediaStoreHelper
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -21,12 +25,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Implementation of DownloadRepository using Android's DownloadManager.
- * TODO: Implement full download functionality when Fetch library dependency is resolved.
+ * Handles scoped storage for API 29+ and legacy storage for older versions.
  */
 @Singleton
 class DownloadRepositoryImpl @Inject constructor(
@@ -52,6 +57,7 @@ class DownloadRepositoryImpl @Inject constructor(
     init {
         startMonitoring()
     }
+
 
     private fun startMonitoring() {
         monitoringJob?.cancel()
@@ -79,15 +85,12 @@ class DownloadRepositoryImpl @Inject constructor(
      * Returns true if there are active downloads, false otherwise.
      */
     private suspend fun updateDownloadProgress(): Boolean {
-        // Get only the download IDs we're tracking
         val trackedIds = downloadDao.getActiveDownloadIds()
         
-        // Early return if no downloads to track
         if (trackedIds.isEmpty()) {
             return false
         }
         
-        // Query only our tracked downloads
         val query = DownloadManager.Query().setFilterById(*trackedIds.map { it.toLong() }.toLongArray())
         val cursor = downloadManager.query(query)
         
@@ -112,21 +115,34 @@ class DownloadRepositoryImpl @Inject constructor(
                             else -> "QUEUED"
                         }
                         
-                        // Track if we have any active downloads
                         if (newStatus in listOf("QUEUED", "DOWNLOADING", "PAUSED")) {
                             hasActiveDownloads = true
                         }
                         
                         val progress = if (totalBytes > 0) (bytesDownloaded * 100 / totalBytes).toInt() else 0
                         
-                        // Only update if changed to avoid database churn
-                        if (entity.status != newStatus || entity.downloadedBytes != bytesDownloaded || entity.progress != progress) {
-                            downloadDao.update(entity.copy(
+                        // Handle completion: copy to MediaStore for API 29+
+                        var updatedEntity = entity
+                        if (newStatus == "COMPLETED" && entity.status != "COMPLETED") {
+                            updatedEntity = handleDownloadCompletion(entity)
+                        }
+                        
+                        // Check if status or progress changed
+                        val statusChanged = updatedEntity.status != newStatus
+                        val progressChanged = updatedEntity.downloadedBytes != bytesDownloaded || updatedEntity.progress != progress
+                        
+                        if (statusChanged || progressChanged) {
+                            val finalEntity = updatedEntity.copy(
                                 status = newStatus,
                                 downloadedBytes = bytesDownloaded,
                                 totalBytes = totalBytes,
                                 progress = progress
-                            ))
+                            )
+                            downloadDao.update(finalEntity)
+                            
+                            // Update notification based on status change
+                            val downloadItem = finalEntity.toDomainModel()
+                            downloadNotificationManager.updateNotification(downloadItem)
                         }
                     }
                 } while (it.moveToNext())
@@ -134,6 +150,35 @@ class DownloadRepositoryImpl @Inject constructor(
         }
         
         return hasActiveDownloads
+    }
+    
+    /**
+     * Handle download completion: for API 29+, copy from app-specific dir to MediaStore
+     * and store the content URI for later access.
+     */
+    private suspend fun handleDownloadCompletion(entity: DownloadEntity): DownloadEntity {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // For API 29+, the file is in app-specific external files dir
+            // Copy it to MediaStore and get content URI
+            val appDownloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            val sourceFile = File(appDownloadsDir, entity.filename)
+            
+            if (sourceFile.exists()) {
+                val mimeType = MediaStoreHelper.getMimeType(entity.filename)
+                val contentUri = MediaStoreHelper.saveToMediaStore(context, sourceFile, entity.filename, mimeType)
+                
+                if (contentUri != null) {
+                    // Delete the temp file from app-specific storage
+                    sourceFile.delete()
+                    
+                    return entity.copy(
+                        contentUri = contentUri.toString(),
+                        displayPath = "${Environment.DIRECTORY_DOWNLOADS}/${entity.filename}"
+                    )
+                }
+            }
+        }
+        return entity
     }
     
     override fun observeDownloads(): Flow<List<DownloadItem>> {
@@ -144,21 +189,20 @@ class DownloadRepositoryImpl @Inject constructor(
     
     override suspend fun startDownload(url: String, filename: String, quality: String) {
         try {
-            // Validate URL
             if (!URLUtil.isValidUrl(url)) {
                 android.util.Log.e("DownloadRepository", "Invalid URL: $url")
                 throw IllegalArgumentException("Invalid download URL")
             }
             
-            // Check storage permission for API 24-28
-            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+            // Check storage permission for API 24-28 only
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                 val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
                     context,
                     android.Manifest.permission.WRITE_EXTERNAL_STORAGE
                 ) == android.content.pm.PackageManager.PERMISSION_GRANTED
                 
                 if (!hasPermission) {
-                    val errorMsg = "Storage permission required for downloads on Android ${android.os.Build.VERSION.SDK_INT}"
+                    val errorMsg = "Storage permission required for downloads on Android ${Build.VERSION.SDK_INT}"
                     android.util.Log.e("DownloadRepository", errorMsg)
                     throw SecurityException(errorMsg)
                 }
@@ -166,43 +210,52 @@ class DownloadRepositoryImpl @Inject constructor(
             
             android.util.Log.d("DownloadRepository", "Starting download with quality: $quality")
             
-            // Get cookies for the request
             val cookies = CookieManager.getInstance().getCookie(url)
             
-            // Create download request
             val request = DownloadManager.Request(Uri.parse(url)).apply {
-                // Set title and description for notification
                 setTitle(filename)
                 setDescription("Downloading video ($quality)")
-                
-                // Set notification visibility
                 setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 
-                // Set destination in public Downloads directory
-                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
+                // Use different storage strategies based on API level
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // API 29+: Use app-specific external files directory (scoped storage)
+                    // File will be copied to MediaStore on completion
+                    setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, filename)
+                } else {
+                    // API <29: Use public Downloads directory directly
+                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
+                }
                 
-                // Add cookies if available
                 if (!cookies.isNullOrEmpty()) {
                     addRequestHeader("Cookie", cookies)
                 }
                 
-                // Add user agent
                 addRequestHeader("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36")
-                
-                // Allow download over mobile and WiFi
                 setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
                 setAllowedOverRoaming(true)
             }
             
-            // Enqueue the download
             val downloadId = downloadManager.enqueue(request)
             
-            // Save to database
+            // Build entity with appropriate path/URI based on API level
+            val (filePath, displayPath) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // For API 29+, filePath is temp location, contentUri will be set on completion
+                val tempPath = "${context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)}/$filename"
+                Pair(tempPath, "${Environment.DIRECTORY_DOWNLOADS}/$filename")
+            } else {
+                // For legacy, use public Downloads path
+                val publicPath = "${Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)}/$filename"
+                Pair(publicPath, "${Environment.DIRECTORY_DOWNLOADS}/$filename")
+            }
+            
             val downloadEntity = DownloadEntity(
                 id = downloadId.toInt(),
                 url = url,
                 filename = filename,
-                filePath = "${Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)}/$filename",
+                contentUri = null, // Will be set on completion for API 29+
+                displayPath = displayPath,
+                filePath = filePath,
                 status = "DOWNLOADING",
                 progress = 0,
                 downloadedBytes = 0,
@@ -213,15 +266,20 @@ class DownloadRepositoryImpl @Inject constructor(
             
             android.util.Log.d("DownloadRepository", "Download started: $filename (ID: $downloadId) with quality: $quality")
             
+        } catch (e: IllegalArgumentException) {
+            android.util.Log.e("DownloadRepository", "Invalid URL for download", e)
+            throw e
+        } catch (e: SecurityException) {
+            android.util.Log.e("DownloadRepository", "Permission denied for download", e)
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("DownloadRepository", "Failed to start download", e)
+            throw e
         }
     }
     
     override suspend fun pauseDownload(downloadId: Int) {
-        // Android DownloadManager doesn't support pausing arbitrary downloads easily via public API
-        // without removing and restarting with Range header, which is complex.
-        // For now, we'll leave this as no-op or user can cancel and restart.
+        // Android DownloadManager doesn't support pausing via public API
     }
     
     override suspend fun resumeDownload(downloadId: Int) {
@@ -232,6 +290,8 @@ class DownloadRepositoryImpl @Inject constructor(
         try {
             downloadManager.remove(downloadId.toLong())
             downloadDao.delete(downloadId)
+            // Cancel the notification for this download
+            downloadNotificationManager.cancelNotification(downloadId)
         } catch (e: Exception) {
             android.util.Log.e("DownloadRepository", "Failed to cancel download: $downloadId", e)
         }
@@ -239,18 +299,20 @@ class DownloadRepositoryImpl @Inject constructor(
     
     override suspend fun deleteDownload(downloadId: Int) {
         downloadDao.delete(downloadId)
+        // Cancel the notification for this download
+        downloadNotificationManager.cancelNotification(downloadId)
     }
 }
 
 /**
  * Extension function to convert DownloadEntity to DownloadItem domain model.
  */
-private fun DownloadEntity.toDomainModel(): DownloadItem {
+internal fun DownloadEntity.toDomainModel(): DownloadItem {
     return DownloadItem(
         id = id,
         url = url,
         filename = filename,
-        filePath = filePath,
+        filePath = contentUri ?: filePath, // Prefer contentUri for API 29+
         status = when (status) {
             "QUEUED" -> DownloadStatus.QUEUED
             "DOWNLOADING" -> DownloadStatus.DOWNLOADING

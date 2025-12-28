@@ -1,19 +1,65 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Data extraction rules for Android 12+ (API 31+).
+   Excludes browsing data (cookies, history, cache) from cloud backup and device transfer for privacy.
    See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- Exclude WebView data (cookies, local storage, cache) -->
+        <exclude domain="database" path="webview.db" />
+        <exclude domain="database" path="webviewCache.db" />
+        <exclude domain="file" path="app_webview" />
+        
+        <!-- Exclude all cache directories -->
+        <exclude domain="cache" path="." />
+        
+        <!-- Exclude WebView cookies and local storage -->
+        <exclude domain="file" path="app_webview/Cookies" />
+        <exclude domain="file" path="app_webview/Local Storage" />
+        <exclude domain="file" path="app_webview/IndexedDB" />
+        <exclude domain="file" path="app_webview/Session Storage" />
+        
+        <!-- Exclude image cache -->
+        <exclude domain="file" path="image_cache" />
+        
+        <!-- Exclude tab thumbnails (contain browsing history) -->
+        <exclude domain="file" path="tab_thumbnails" />
+        
+        <!-- Exclude shared preferences that contain sensitive data -->
+        <exclude domain="sharedpref" path="remote_ad_config.xml" />
+        <exclude domain="sharedpref" path="WebViewChromiumPrefs.xml" />
+        
+        <!-- Exclude Room database (contains browsing history/tabs) -->
+        <exclude domain="database" path="entertainment_browser_database" />
     </cloud-backup>
-    <!--
+    
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <!-- Exclude WebView data (cookies, local storage, cache) -->
+        <exclude domain="database" path="webview.db" />
+        <exclude domain="database" path="webviewCache.db" />
+        <exclude domain="file" path="app_webview" />
+        
+        <!-- Exclude all cache directories -->
+        <exclude domain="cache" path="." />
+        
+        <!-- Exclude WebView cookies and local storage -->
+        <exclude domain="file" path="app_webview/Cookies" />
+        <exclude domain="file" path="app_webview/Local Storage" />
+        <exclude domain="file" path="app_webview/IndexedDB" />
+        <exclude domain="file" path="app_webview/Session Storage" />
+        
+        <!-- Exclude image cache -->
+        <exclude domain="file" path="image_cache" />
+        
+        <!-- Exclude tab thumbnails (contain browsing history) -->
+        <exclude domain="file" path="tab_thumbnails" />
+        
+        <!-- Exclude shared preferences that contain sensitive data -->
+        <exclude domain="sharedpref" path="remote_ad_config.xml" />
+        <exclude domain="sharedpref" path="WebViewChromiumPrefs.xml" />
+        
+        <!-- Exclude Room database (contains browsing history/tabs) -->
+        <exclude domain="database" path="entertainment_browser_database" />
     </device-transfer>
-    -->
 </data-extraction-rules>
