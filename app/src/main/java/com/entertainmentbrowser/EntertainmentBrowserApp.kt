@@ -194,11 +194,13 @@ class EntertainmentBrowserApp : Application(), ImageLoaderFactory {
             Log.d(TAG, "🚀 Preloading ad-blockers...")
             val startTime = System.currentTimeMillis()
             
-            // Initialize both engines in parallel using coroutines
+            // Initialize engines in parallel using coroutines
             kotlinx.coroutines.coroutineScope {
+                // Fast engine (HashSet-based, O(1) lookups)
                 launch(Dispatchers.IO) {
                     fastAdBlockEngine.preloadFromAssets()
                 }
+                // Advanced engine (Bloom filter + Trie, full filter support)
                 launch(Dispatchers.IO) {
                     advancedAdBlockEngine.preloadFromAssets()
                 }
@@ -213,7 +215,7 @@ class EntertainmentBrowserApp : Application(), ImageLoaderFactory {
             // Calculate total blocked domains for status
             val totalBlockedDomains = fastStatus.blockedDomainsCount + advancedStatus.blockedDomainsCount
             
-            // Get truncation info from AdvancedAdBlockEngine
+            // Get rule stats from AdvancedAdBlockEngine (now with no limits)
             val engineRuleStats = advancedAdBlockEngine.getRuleStats()
             val truncationPercentage = engineRuleStats.getTruncationPercentage()
             
@@ -232,7 +234,7 @@ class EntertainmentBrowserApp : Application(), ImageLoaderFactory {
             )
             
             if (fastStatus.isHealthy() && advancedStatus.isHealthy()) {
-                Log.d(TAG, "✅ Ad-blockers ready in ${duration}ms (95%+ blocking)")
+                Log.d(TAG, "✅ Ad-blockers ready in ${duration}ms (FULL filter support - no limits)")
                 Log.d(TAG, "   FastEngine: ${fastStatus.blockedDomainsCount} domains, ${fastStatus.blockedPatternsCount} patterns")
                 Log.d(TAG, "   AdvancedEngine: ${advancedStatus.blockedDomainsCount} domains, ${advancedStatus.wildcardPatternsCount} wildcards, ${advancedStatus.regexPatternsCount} regex")
                 
@@ -241,19 +243,12 @@ class EntertainmentBrowserApp : Application(), ImageLoaderFactory {
                     isInitialized = true,
                     fastEngineHealthy = true,
                     advancedEngineHealthy = true,
-                    isTruncated = advancedStatus.isTruncated(),
-                    truncationPercentage = truncationPercentage,
+                    rustEngineHealthy = false, // No Rust engine
+                    isTruncated = false, // No limits = no truncation
+                    truncationPercentage = 0f,
                     blockedDomainsCount = totalBlockedDomains,
                     ruleStats = statusRuleStats
                 )
-                
-                // Log rule truncation if any
-                if (advancedStatus.isTruncated()) {
-                    Log.w(TAG, "⚠️ AdvancedEngine rule truncation detected:")
-                    Log.w(TAG, "   Wildcard: ${engineRuleStats.wildcardPatternsLoaded}/${engineRuleStats.wildcardPatternsLimit} (dropped: ${engineRuleStats.wildcardPatternsDropped})")
-                    Log.w(TAG, "   Regex: ${engineRuleStats.regexPatternsLoaded}/${engineRuleStats.regexPatternsLimit} (dropped: ${engineRuleStats.regexPatternsDropped})")
-                    Log.w(TAG, "   Total truncation: ${truncationPercentage}%")
-                }
             } else {
                 Log.w(TAG, "⚠️ Ad-blocker initialization incomplete:")
                 
@@ -272,16 +267,17 @@ class EntertainmentBrowserApp : Application(), ImageLoaderFactory {
                     isInitialized = true,
                     fastEngineHealthy = fastStatus.isHealthy(),
                     advancedEngineHealthy = advancedStatus.isHealthy(),
-                    isTruncated = advancedStatus.isTruncated(),
-                    truncationPercentage = truncationPercentage,
+                    rustEngineHealthy = false,
+                    isTruncated = false,
+                    truncationPercentage = 0f,
                     blockedDomainsCount = totalBlockedDomains,
                     errorMessage = errorMessages.joinToString(", "),
                     ruleStats = statusRuleStats
                 )
                 
-                // If both engines failed, consider triggering filter update
+                // If all engines failed, log critical error
                 if (fastStatus.initializationFailed && advancedStatus.initializationFailed) {
-                    Log.e(TAG, "❌ Both ad-blocking engines failed to initialize - ad blocking will be degraded")
+                    Log.e(TAG, "❌ All ad-blocking engines failed to initialize - ad blocking will be degraded")
                 }
             }
         } catch (e: Exception) {

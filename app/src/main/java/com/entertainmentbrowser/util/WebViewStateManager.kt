@@ -32,6 +32,15 @@ class WebViewStateManager {
     private val lastAccessTime = ConcurrentHashMap<String, Long>()
     
     /**
+     * Check if a WebView is cached for the given tab ID.
+     * This can be used to determine if getWebViewForTab will return an existing
+     * WebView (with preserved state) or create a new one.
+     */
+    fun hasWebViewForTab(tabId: String): Boolean {
+        return webViewCache.containsKey(tabId)
+    }
+    
+    /**
      * Get or create WebView for a specific tab
      * Updates LRU timestamp and enforces cache size limit
      */

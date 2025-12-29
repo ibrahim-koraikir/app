@@ -65,6 +65,13 @@ fun CustomWebView(
     val context = LocalContext.current
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
     
+    // Check if WebView is already cached for this tab BEFORE getting it
+    // This tells us if we're reusing an existing WebView (with preserved state)
+    // or creating a new one (which needs URL loaded)
+    val wasWebViewCached = remember(tabId) {
+        webViewStateManager.hasWebViewForTab(tabId)
+    }
+    
     // Get or create WebView for this specific tab - REUSES existing WebView!
     // This preserves scroll position, page state, and navigation history
     val webView = remember(tabId) {
@@ -663,25 +670,37 @@ fun CustomWebView(
         val webViewHasContent = !currentWebViewUrl.isNullOrBlank() && 
                                 currentWebViewUrl != "about:blank"
         
+        // Check if this is a "new" tab context (first time seeing this tabId in this composable instance)
+        val isNewTabContext = lastLoadedUrlForTab == null
+        
+        // CRITICAL FIX for tab switching bug:
+        // - If WebView was CACHED for this tab -> it has the correct content, preserve it
+        // - If WebView was NOT cached (new/recycled) -> need to load the URL
+        //
+        // When wasWebViewCached is true, the WebView already has this tab's content
+        // (user's navigation history, scroll position, etc.) - don't reload!
+        //
+        // When wasWebViewCached is false, the WebView is new or recycled from pool,
+        // so we need to load the correct URL for this tab.
+        val shouldPreserveContent = wasWebViewCached && webViewHasContent
+        
         // Load URL if:
         // 1. URL is not blank
-        // 2. This is a NEW tab (lastLoadedUrlForTab is null) AND WebView has no content
-        // 3. OR WebView has no URL yet (fresh/recycled WebView)
-        // 4. OR WebView is on a blank page
-        // Note: When switching tabs, if WebView already has content, preserve it
-        val isNewTab = lastLoadedUrlForTab == null
+        // 2. AND we should NOT preserve content (WebView is new/recycled)
+        // 3. OR WebView has no URL yet
+        // 4. OR WebView is on about:blank
         val shouldLoad = url.isNotBlank() && (
-            (isNewTab && !webViewHasContent) ||
+            !shouldPreserveContent ||
             currentWebViewUrl.isNullOrBlank() ||
             currentWebViewUrl == "about:blank"
         )
         
         if (shouldLoad) {
-            android.util.Log.d("CustomWebView", "Loading URL for tab $tabId: $url (isNewTab=$isNewTab, WebView was: $currentWebViewUrl)")
+            android.util.Log.d("CustomWebView", "Loading URL for tab $tabId: $url (wasCached=$wasWebViewCached, isNewContext=$isNewTabContext, WebView was: $currentWebViewUrl)")
             webView.loadUrl(url)
             lastLoadedUrlForTab = url
         } else {
-            android.util.Log.d("CustomWebView", "Tab $tabId - Preserving WebView state, current URL: $currentWebViewUrl")
+            android.util.Log.d("CustomWebView", "Tab $tabId - Preserving cached WebView state, current URL: $currentWebViewUrl (wasCached=$wasWebViewCached)")
             // Update lastLoadedUrlForTab to match what's in the WebView
             lastLoadedUrlForTab = currentWebViewUrl
         }

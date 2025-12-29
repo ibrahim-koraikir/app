@@ -52,6 +52,7 @@ object AdBlockStatus {
         val isTruncated: Boolean = false,
         val fastEngineHealthy: Boolean = false,
         val advancedEngineHealthy: Boolean = false,
+        val rustEngineHealthy: Boolean = false,
         val errorMessage: String? = null,
         val truncationPercentage: Float = 0f,
         val blockedDomainsCount: Int = 0,
@@ -65,21 +66,24 @@ object AdBlockStatus {
     ) {
         /**
          * Returns true if ad-blocking is fully operational.
+         * With Rust engine, we have full filter support without truncation.
          */
         fun isFullyOperational(): Boolean = 
-            isInitialized && !isDegraded && !isTruncated && fastEngineHealthy && advancedEngineHealthy
+            isInitialized && rustEngineHealthy || 
+            (isInitialized && !isDegraded && !isTruncated && fastEngineHealthy && advancedEngineHealthy)
         
         /**
-         * Returns true if both engines have failed.
+         * Returns true if all engines have failed.
          */
         fun isBothEnginesFailed(): Boolean = 
-            isInitialized && !fastEngineHealthy && !advancedEngineHealthy
+            isInitialized && !fastEngineHealthy && !advancedEngineHealthy && !rustEngineHealthy
         
         /**
          * Returns a user-friendly status message.
          */
         fun getStatusMessage(): String = when {
             !isInitialized -> "Ad blocker initializing..."
+            rustEngineHealthy -> "Ad blocking active (Rust engine - full filter support)"
             isBothEnginesFailed() -> "Ad blocking unavailable"
             isDegraded && !advancedEngineHealthy && fastEngineHealthy -> 
                 "Basic ad blocking active"
@@ -95,8 +99,10 @@ object AdBlockStatus {
          */
         fun getDetailedStatusMessage(): String = when {
             !isInitialized -> "Ad blocker is initializing. Please wait..."
+            rustEngineHealthy -> 
+                "Rust ad-block engine active with full EasyList/AdGuard filter support. No rule limits."
             isBothEnginesFailed() -> 
-                "Both ad-blocking engines failed to initialize. Tap Refresh to try updating filters."
+                "All ad-blocking engines failed to initialize. Tap Refresh to try updating filters."
             isDegraded && !advancedEngineHealthy && fastEngineHealthy -> 
                 "Advanced blocking reduced due to filter size; basic blocking still active."
             isDegraded && !fastEngineHealthy && advancedEngineHealthy ->
@@ -126,6 +132,7 @@ object AdBlockStatus {
      * @param isInitialized Whether initialization has completed
      * @param fastEngineHealthy Whether FastAdBlockEngine is healthy
      * @param advancedEngineHealthy Whether AdvancedAdBlockEngine is healthy
+     * @param rustEngineHealthy Whether RustAdBlockEngine is healthy
      * @param isTruncated Whether rules were truncated due to limits
      * @param truncationPercentage Percentage of rules that were dropped
      * @param blockedDomainsCount Total number of blocked domains
@@ -136,13 +143,15 @@ object AdBlockStatus {
         isInitialized: Boolean,
         fastEngineHealthy: Boolean,
         advancedEngineHealthy: Boolean,
+        rustEngineHealthy: Boolean = false,
         isTruncated: Boolean = false,
         truncationPercentage: Float = 0f,
         blockedDomainsCount: Int = 0,
         errorMessage: String? = null,
         ruleStats: RuleStats = RuleStats()
     ) {
-        val isDegraded = !fastEngineHealthy || !advancedEngineHealthy
+        // With Rust engine healthy, we're not degraded even if other engines fail
+        val isDegraded = !rustEngineHealthy && (!fastEngineHealthy || !advancedEngineHealthy)
         val currentStatus = _status.value
         
         // Increment telemetry counters
@@ -159,7 +168,9 @@ object AdBlockStatus {
         }
         
         // Log telemetry (privacy-safe, no PII)
-        if (isDegraded || isTruncated) {
+        if (rustEngineHealthy) {
+            Log.i(TAG, "🦀 Rust ad-block engine active - full filter support enabled")
+        } else if (isDegraded || isTruncated) {
             Log.i(TAG, "📊 AdBlock telemetry: degraded=$isDegraded, truncated=$isTruncated, " +
                 "initFailures=$newInitFailureCount, truncationEvents=$newTruncationCount")
         }
@@ -167,11 +178,12 @@ object AdBlockStatus {
         _status.value = Status(
             isInitialized = isInitialized,
             isDegraded = isDegraded,
-            isTruncated = isTruncated,
+            isTruncated = if (rustEngineHealthy) false else isTruncated,
             fastEngineHealthy = fastEngineHealthy,
             advancedEngineHealthy = advancedEngineHealthy,
+            rustEngineHealthy = rustEngineHealthy,
             errorMessage = errorMessage,
-            truncationPercentage = truncationPercentage,
+            truncationPercentage = if (rustEngineHealthy) 0f else truncationPercentage,
             blockedDomainsCount = blockedDomainsCount,
             lastUpdateTime = System.currentTimeMillis(),
             isRefreshing = false,

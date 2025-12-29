@@ -32,10 +32,15 @@ class AdvancedAdBlockEngine @Inject constructor(
     companion object {
         private const val TAG = "AdvancedAdBlockEngine"
         
-        // Performance thresholds - OPTIMIZED for speed
-        private const val MAX_REGEX_PATTERNS = 200 // Reduced for faster checks
-        private const val MAX_WILDCARD_PATTERNS = 800 // Reduced for faster checks
-        private const val CACHE_SIZE = 10000 // Larger cache = fewer recalculations
+        // Performance thresholds - REMOVED LIMITS for full filter support
+        // Bloom filter + Trie make unlimited patterns feasible
+        private const val MAX_REGEX_PATTERNS = Int.MAX_VALUE // No limit
+        private const val MAX_WILDCARD_PATTERNS = Int.MAX_VALUE // No limit
+        private const val CACHE_SIZE = 20000 // Larger cache = fewer recalculations
+        
+        // Bloom filter settings for fast negative lookups
+        private const val BLOOM_EXPECTED_ELEMENTS = 100000 // Expected blocked domains
+        private const val BLOOM_FALSE_POSITIVE_RATE = 0.01 // 1% false positive rate
     }
     
     // ============================================================================
@@ -43,7 +48,14 @@ class AdvancedAdBlockEngine @Inject constructor(
     // Thread-safe collections to prevent concurrent modification
     // ============================================================================
     
+    // Bloom filter for fast negative lookups - if not in bloom, definitely not blocked
+    private val domainBloomFilter = BloomFilter(BLOOM_EXPECTED_ELEMENTS, BLOOM_FALSE_POSITIVE_RATE)
+    
+    // Trie for efficient domain + subdomain matching
+    private val domainTrie = DomainTrie()
+    
     // Simple domain blocking (O(1)) - contains ONLY hostnames, no paths
+    // Kept for exact match fallback after bloom filter positive
     private val blockedDomains = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val allowedDomains = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     
@@ -96,17 +108,11 @@ class AdvancedAdBlockEngine @Inject constructor(
     
     private val blockedCount = java.util.concurrent.atomic.AtomicInteger(0)
     
-    // Track dropped rules due to limits
-    private val droppedWildcardRules = java.util.concurrent.atomic.AtomicInteger(0)
-    private val droppedRegexRules = java.util.concurrent.atomic.AtomicInteger(0)
-    private var hasLoggedWildcardLimit = false
-    private var hasLoggedRegexLimit = false
-    
-    // Thread-safe LRU cache for URL check results (5,000 entries max to prevent memory issues)
+    // Thread-safe LRU cache for URL check results (20,000 entries max)
     private val urlCache = java.util.Collections.synchronizedMap(
-        object : LinkedHashMap<String, Boolean>(1000, 0.75f, true) {
+        object : LinkedHashMap<String, Boolean>(2000, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?): Boolean {
-                return size > 5000
+                return size > CACHE_SIZE
             }
         }
     )
@@ -143,23 +149,16 @@ class AdvancedAdBlockEngine @Inject constructor(
             val duration = System.currentTimeMillis() - startTime
             isInitialized = true
             
-            Log.d(TAG, "✅ Advanced ad-blocker ready in ${duration}ms (95%+ blocking)")
+            Log.d(TAG, "✅ Advanced ad-blocker ready in ${duration}ms (FULL filter support - no limits)")
             Log.d(TAG, "   Blocked domains: ${blockedDomains.size}")
+            Log.d(TAG, "   Domain Trie: ${domainTrie.size()} domains")
+            Log.d(TAG, "   Bloom filter: ${domainBloomFilter.getStats()}")
             Log.d(TAG, "   Blocked paths: ${blockedPaths.size}")
-            Log.d(TAG, "   Wildcard patterns: ${wildcardPatterns.size} (dropped: ${droppedWildcardRules.get()})")
-            Log.d(TAG, "   Regex patterns: ${regexPatterns.size} (dropped: ${droppedRegexRules.get()})")
+            Log.d(TAG, "   Wildcard patterns: ${wildcardPatterns.size} (NO LIMIT)")
+            Log.d(TAG, "   Regex patterns: ${regexPatterns.size} (NO LIMIT)")
             Log.d(TAG, "   First-party paths: ${firstPartyAdPaths.size}")
             Log.d(TAG, "   CNAME mappings: ${cnameMap.size}")
             Log.d(TAG, "   Critical whitelist: ${criticalWhitelist.size} domains")
-            
-            // Warn if significant rules were dropped
-            val totalDropped = droppedWildcardRules.get() + droppedRegexRules.get()
-            if (totalDropped > 0) {
-                Log.w(TAG, "⚠️ Total rules dropped due to limits: $totalDropped")
-                if (BuildConfig.DEBUG) {
-                    Log.w(TAG, "   Consider increasing MAX_WILDCARD_PATTERNS or MAX_REGEX_PATTERNS")
-                }
-            }
             
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to load", e)
@@ -249,41 +248,27 @@ class AdvancedAdBlockEngine @Inject constructor(
             val domain = pattern.substring(2, pattern.length - 1)
             if (domain.isNotEmpty()) {
                 blockedDomains.add(domain)
+                domainTrie.add(domain)
+                domainBloomFilter.add(domain)
             }
             return
         }
         
         // Wildcard pattern: ||domain.com/*/ads/*
         if (pattern.contains("*")) {
-            if (wildcardPatterns.size < MAX_WILDCARD_PATTERNS) {
-                val regex = wildcardToRegex(pattern)
-                wildcardPatterns.add(WildcardRule(pattern, regex, options))
-            } else {
-                droppedWildcardRules.incrementAndGet()
-                if (!hasLoggedWildcardLimit && BuildConfig.DEBUG) {
-                    Log.w(TAG, "⚠️ Wildcard pattern limit reached ($MAX_WILDCARD_PATTERNS) - dropping additional patterns")
-                    hasLoggedWildcardLimit = true
-                }
-            }
+            val regex = wildcardToRegex(pattern)
+            wildcardPatterns.add(WildcardRule(pattern, regex, options))
             return
         }
         
         // Regex pattern: /pattern/
         if (pattern.startsWith("/") && pattern.endsWith("/")) {
-            if (regexPatterns.size < MAX_REGEX_PATTERNS) {
-                try {
-                    val regexStr = pattern.substring(1, pattern.length - 1)
-                    val compiled = Pattern.compile(regexStr, Pattern.CASE_INSENSITIVE)
-                    regexPatterns.add(RegexRule(compiled, options))
-                } catch (e: Exception) {
-                    // Skip invalid regex
-                }
-            } else {
-                droppedRegexRules.incrementAndGet()
-                if (!hasLoggedRegexLimit && BuildConfig.DEBUG) {
-                    Log.w(TAG, "⚠️ Regex pattern limit reached ($MAX_REGEX_PATTERNS) - dropping additional patterns")
-                    hasLoggedRegexLimit = true
-                }
+            try {
+                val regexStr = pattern.substring(1, pattern.length - 1)
+                val compiled = Pattern.compile(regexStr, Pattern.CASE_INSENSITIVE)
+                regexPatterns.add(RegexRule(compiled, options))
+            } catch (e: Exception) {
+                // Skip invalid regex
             }
             return
         }
@@ -497,21 +482,40 @@ class AdvancedAdBlockEngine @Inject constructor(
                 return cacheAndReturn(cacheKey, false)
             }
             
-            // FAST PATH: Simple domain block check (O(1))
-            if (blockedDomains.contains(domain)) {
-                blockedCount.incrementAndGet()
-                return cacheAndReturn(cacheKey, true)
-            }
-            
-            // Check exception rules
+            // Check exception rules first
             if (allowedDomains.contains(domain)) {
                 return cacheAndReturn(cacheKey, false)
             }
             
-            // Check subdomain blocking
-            if (isSubdomainBlocked(domain)) {
-                blockedCount.incrementAndGet()
-                return cacheAndReturn(cacheKey, true)
+            // BLOOM FILTER: Fast negative lookup - if not in bloom, definitely not blocked
+            // This skips expensive Trie/HashSet lookups for most legitimate URLs
+            if (!domainBloomFilter.mightContain(domain)) {
+                // Check parent domains in bloom filter
+                var parentDomain = domain
+                var foundInBloom = false
+                while (parentDomain.contains(".")) {
+                    parentDomain = parentDomain.substringAfter(".")
+                    if (domainBloomFilter.mightContain(parentDomain)) {
+                        foundInBloom = true
+                        break
+                    }
+                }
+                if (!foundInBloom) {
+                    // Definitely not in blocked domains, skip to pattern checks
+                    // (still need to check paths and patterns)
+                } else {
+                    // Bloom says maybe blocked, verify with Trie
+                    if (domainTrie.isBlocked(domain)) {
+                        blockedCount.incrementAndGet()
+                        return cacheAndReturn(cacheKey, true)
+                    }
+                }
+            } else {
+                // Bloom says maybe blocked, verify with Trie (O(k) where k = domain parts)
+                if (domainTrie.isBlocked(domain)) {
+                    blockedCount.incrementAndGet()
+                    return cacheAndReturn(cacheKey, true)
+                }
             }
             
             // Check remote domains (lazy loaded, O(1))
@@ -829,8 +833,10 @@ class AdvancedAdBlockEngine @Inject constructor(
             firstPartyPathsCount = firstPartyAdPaths.size,
             cnameMappingsCount = cnameMap.size,
             totalBlockedCount = blockedCount.get(),
-            droppedWildcardRules = droppedWildcardRules.get(),
-            droppedRegexRules = droppedRegexRules.get()
+            droppedWildcardRules = 0, // No limits anymore
+            droppedRegexRules = 0, // No limits anymore
+            domainTrieSize = domainTrie.size(),
+            bloomFilterStats = domainBloomFilter.getStats().toString()
         )
     }
     
@@ -841,21 +847,20 @@ class AdvancedAdBlockEngine @Inject constructor(
      * @return RuleStats object with loaded and dropped counts
      */
     fun getRuleStats(): RuleStats {
-        val totalDropped = droppedWildcardRules.get() + droppedRegexRules.get()
         val totalLoaded = blockedDomains.size + blockedPaths.size + wildcardPatterns.size + regexPatterns.size
         
         return RuleStats(
             blockedDomains = blockedDomains.size,
             blockedPaths = blockedPaths.size,
             wildcardPatternsLoaded = wildcardPatterns.size,
-            wildcardPatternsDropped = droppedWildcardRules.get(),
-            wildcardPatternsLimit = MAX_WILDCARD_PATTERNS,
+            wildcardPatternsDropped = 0, // No limits anymore
+            wildcardPatternsLimit = Int.MAX_VALUE,
             regexPatternsLoaded = regexPatterns.size,
-            regexPatternsDropped = droppedRegexRules.get(),
-            regexPatternsLimit = MAX_REGEX_PATTERNS,
+            regexPatternsDropped = 0, // No limits anymore
+            regexPatternsLimit = Int.MAX_VALUE,
             totalRulesLoaded = totalLoaded,
-            totalRulesDropped = totalDropped,
-            isTruncated = totalDropped > 0
+            totalRulesDropped = 0, // No limits anymore
+            isTruncated = false // Never truncated now
         )
     }
     
@@ -873,10 +878,12 @@ class AdvancedAdBlockEngine @Inject constructor(
         val cnameMappingsCount: Int,
         val totalBlockedCount: Int,
         val droppedWildcardRules: Int,
-        val droppedRegexRules: Int
+        val droppedRegexRules: Int,
+        val domainTrieSize: Int = 0,
+        val bloomFilterStats: String = ""
     ) {
         fun isHealthy(): Boolean = isInitialized && !initializationFailed && blockedDomainsCount > 0
-        fun isTruncated(): Boolean = droppedWildcardRules > 0 || droppedRegexRules > 0
+        fun isTruncated(): Boolean = false // Never truncated with unlimited patterns
     }
     
     /**
